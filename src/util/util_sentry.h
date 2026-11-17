@@ -93,8 +93,8 @@ namespace dxvk {
 
     // Uploads (or caches) whatever queueGpuCrashReport() left pending. Called from the submission
     // queue thread, since the render thread is typically frozen by then. Terminating the process
-    // afterward is the caller's job.
-    void processPendingGpuCrashReports();
+    // afterward is the caller's job. memoryExhausted adds a line about video memory to the crash dialog.
+    void processPendingGpuCrashReports(bool memoryExhausted = false);
 
   }
 

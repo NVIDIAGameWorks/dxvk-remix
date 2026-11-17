@@ -24,8 +24,16 @@
 
 #include "dxvk_device.h"
 #include "dxvk_memory.h"
+// NV-DXVK start: Memory diagnostics
+#include "dxvk_memory_diagnostics.h"
+// NV-DXVK end
 
 namespace dxvk {
+
+// NV-DXVK start: Memory diagnostics
+// What the current alloc() call on this thread has learned across its retries.
+static thread_local DxvkMemoryDiagnostics::AllocationEvidence s_allocationEvidence;
+// NV-DXVK end
 
 DxvkMemoryStats& DxvkMemoryStats::operator=(const DxvkMemoryStats& other)
 {
@@ -203,7 +211,10 @@ DxvkMemory::DxvkMemory() { }
     m_offset  (std::exchange(other.m_offset, 0)),
     m_length  (std::exchange(other.m_length, 0)),
     m_mapPtr  (std::exchange(other.m_mapPtr, nullptr)),
-    m_category (std::exchange(other.m_category, DxvkMemoryStats::Category::Invalid)) { }
+    m_category (std::exchange(other.m_category, DxvkMemoryStats::Category::Invalid)),
+    // NV-DXVK start: Memory diagnostics
+    m_wasDemoted (std::exchange(other.m_wasDemoted, false)) { }
+    // NV-DXVK end
   
   
   DxvkMemory& DxvkMemory::operator = (DxvkMemory&& other) {
@@ -216,6 +227,9 @@ DxvkMemory::DxvkMemory() { }
     m_length  = std::exchange(other.m_length, 0);
     m_mapPtr  = std::exchange(other.m_mapPtr, nullptr);
     m_category = std::exchange(other.m_category, DxvkMemoryStats::Category::Invalid);
+    // NV-DXVK start: Memory diagnostics
+    m_wasDemoted = std::exchange(other.m_wasDemoted, false);
+    // NV-DXVK end
     return *this;
   }
   
@@ -445,6 +459,17 @@ DxvkMemory::DxvkMemory() { }
     if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
       hints = hints & DxvkMemoryFlag::Transient;
 
+    // NV-DXVK start: Memory diagnostics and fault injection
+    DxvkMemoryDiagnostics& diagnostics = DxvkMemoryDiagnostics::get();
+    const auto formatReport = [this] { return formatMemoryReport(); };
+    s_allocationEvidence = {};
+
+    if (diagnostics.injectFailure(category)) {
+      diagnostics.recordFailure(category, req->size, flags, s_allocationEvidence, true, formatReport);
+      throw DxvkError("DxvkMemoryAllocator: Memory allocation failed (injected failure)");
+    }
+    // NV-DXVK end
+
     // Try to allocate from a memory type which supports the given flags exactly
     auto dedAllocPtr = dedAllocReq.prefersDedicatedAllocation ? &dedAllocInfo : nullptr;
     DxvkMemory result = this->tryAlloc(req, dedAllocPtr, flags, hints, category);
@@ -474,31 +499,43 @@ DxvkMemory::DxvkMemory() { }
     }
     
     if (!result) {
-      DxvkAdapterMemoryInfo memHeapInfo = m_device->adapter()->getMemoryHeapInfo();
-
+      // NV-DXVK start: Memory diagnostics
+      // recordFailure logs the state of each heap and publishes it to crash reporting.
       Logger::err(str::format(
         "DxvkMemoryAllocator: Memory allocation failed",
         "\n  Size:      ", req->size,
         "\n  Alignment: ", req->alignment,
         "\n  Mem property flags: ", "0x", std::hex, flags,
-        "\n  Mem types: ", "0x", std::hex, req->memoryTypeBits));
+        "\n  Mem types: ", "0x", std::hex, req->memoryTypeBits, std::dec));
 
-      for (uint32_t i = 0; i < m_memProps.memoryHeapCount; i++) {
-        Logger::err(str::format("Heap ", i, ": ",
-          (m_memHeaps[i].stats.totalAllocated() >> 20), " MB allocated, ",
-          (m_memHeaps[i].stats.totalUsed() >> 20), " MB used, ",
-          m_device->extensions().extMemoryBudget
-            ? str::format(
-                (memHeapInfo.heaps[i].memoryAllocated >> 20), " MB allocated (driver), ",
-                (memHeapInfo.heaps[i].memoryBudget    >> 20), " MB budget (driver), ",
-                (m_memHeaps[i].properties.size        >> 20), " MB total")
-            : str::format(
-                (m_memHeaps[i].properties.size        >> 20), " MB total")));
+      // Exhaustion is recorded only when the whole allocation falls back or fails,
+      // since the allocator retries at smaller chunk sizes after a device-local heap refuses a larger one.
+      if (s_allocationEvidence.videoMemoryExhausted) {
+        diagnostics.recordVideoMemoryExhaustion(DxvkMemoryDiagnostics::nowMs());
       }
+
+      diagnostics.recordFailure(category, req->size, flags, s_allocationEvidence, false, formatReport);
+      // NV-DXVK end
 
       throw DxvkError("DxvkMemoryAllocator: Memory allocation failed");
     }
     
+    // NV-DXVK start: Memory diagnostics
+    // Some requests, such as readable D3D9 buffers, combine device-local with flags no device-local type has,
+    // and always drop device-local by design. Only a request some type could have satisfied counts as a fallback.
+    result.m_wasDemoted = (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+                       && !(result.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+                       && hasMemoryType(req->memoryTypeBits, flags);
+
+    if (result.m_wasDemoted) {
+      if (s_allocationEvidence.videoMemoryExhausted) {
+        diagnostics.recordVideoMemoryExhaustion(DxvkMemoryDiagnostics::nowMs());
+      }
+
+      diagnostics.recordFallback(category, req->size, s_allocationEvidence, formatReport);
+    }
+    // NV-DXVK end
+
     return result;
   }
   
@@ -509,6 +546,48 @@ DxvkMemory::DxvkMemory() { }
     }
   }
   //// NV-DXVK end
+
+  // NV-DXVK start: Memory diagnostics
+  std::string DxvkMemoryAllocator::formatMemoryReport() const {
+    DxvkAdapterMemoryInfo memHeapInfo = m_device->adapter()->getMemoryHeapInfo();
+    std::string report;
+
+    for (uint32_t i = 0; i < m_memProps.memoryHeapCount; i++) {
+      const bool isDeviceLocal = (m_memHeaps[i].properties.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
+
+      report += str::format("Heap ", i, isDeviceLocal ? " (device local): " : " (system): ",
+        (m_memHeaps[i].stats.totalAllocated() >> 20), " MB allocated, ",
+        (m_memHeaps[i].stats.totalUsed() >> 20), " MB used, ",
+        m_device->extensions().extMemoryBudget
+          ? str::format(
+              (memHeapInfo.heaps[i].memoryAllocated >> 20), " MB allocated (driver), ",
+              (memHeapInfo.heaps[i].memoryBudget    >> 20), " MB budget (driver), ")
+          : std::string(),
+        (m_memHeaps[i].properties.size >> 20), " MB total\n");
+
+      if (!isDeviceLocal) {
+        continue;
+      }
+
+      for (uint32_t category = DxvkMemoryStats::Category::First; category <= DxvkMemoryStats::Category::Last; category++) {
+        const VkDeviceSize usedMb = m_memHeaps[i].stats.usedByCategory(DxvkMemoryStats::Category(category)) >> 20;
+
+        if (usedMb != 0) {
+          report += str::format("  ", DxvkMemoryStats::categoryToString(DxvkMemoryStats::Category(category)), ": ", usedMb, " MB\n");
+        }
+      }
+    }
+
+    const VkDeviceSize injectedHeapLimit = DxvkMemoryDiagnostics::injectedHeapLimit();
+
+    if (injectedHeapLimit != 0) {
+      report += str::format("Injected device-local heap limit: ", injectedHeapLimit >> 20, " MB\n");
+    }
+
+    report += DxvkMemoryDiagnostics::get().formatSummary();
+    return report;
+  }
+  // NV-DXVK end
 
   DxvkMemory DxvkMemoryAllocator::tryAlloc(
     const VkMemoryRequirements*             req,
@@ -611,8 +690,30 @@ DxvkMemory::DxvkMemory() { }
     bool useMemoryPriority = (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
                           && (m_device->features().extMemoryPriority.memoryPriority);
     
-    if (type->heap->budget && type->heap->stats.totalAllocated() + size > type->heap->budget)
+    // NV-DXVK start: Memory diagnostics and fault injection
+    const bool isDeviceLocalHeap = (type->heap->properties.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
+    const VkDeviceSize totalAfterAllocation = type->heap->stats.totalAllocated() + size;
+
+    // The heap's own budget is a soft limit, such as on UMA systems or small host-visible device-local heaps,
+    // so a refusal from it is not evidence that video memory ran out.
+    if (type->heap->budget && totalAfterAllocation > type->heap->budget) {
+      s_allocationEvidence.budgetRefused = true;
       return DxvkDeviceMemory();
+    }
+
+    // The injected limit simulates a GPU with less video memory, so reaching it counts as video memory running out.
+    const VkDeviceSize injectedHeapLimit = DxvkMemoryDiagnostics::injectedHeapLimit();
+    const bool injectedLimitReached = isDeviceLocalHeap && injectedHeapLimit && totalAfterAllocation > injectedHeapLimit;
+
+    if (injectedLimitReached) {
+      s_allocationEvidence.injectedLimitReached = true;
+      s_allocationEvidence.videoMemoryExhausted = true;
+
+      if (!DxvkMemoryDiagnostics::FaultInjection::simulateDriverFailure()) {
+        return DxvkDeviceMemory();
+      }
+    }
+    // NV-DXVK end
 
     float priority = 0.0f;
 
@@ -647,8 +748,25 @@ DxvkMemory::DxvkMemory() { }
     info.allocationSize   = size;
     info.memoryTypeIndex  = type->memTypeId;
 
-    if (m_vkd->vkAllocateMemory(m_vkd->device(), &info, nullptr, &result.memHandle) != VK_SUCCESS)
+    // NV-DXVK start: Memory diagnostics and fault injection
+    // Past the injected limit, simulateDriverFailure makes the call fail as if the driver had run out of video memory.
+    const VkResult allocateResult = injectedLimitReached
+      ? VK_ERROR_OUT_OF_DEVICE_MEMORY
+      : m_vkd->vkAllocateMemory(m_vkd->device(), &info, nullptr, &result.memHandle);
+
+    if (allocateResult != VK_SUCCESS) {
+      s_allocationEvidence.lastDriverResult = allocateResult;
+
+      // Running out of device memory on a device-local heap is the driver's evidence that video memory ran out.
+      // Other errors, and errors on system heaps, are not.
+      if (isDeviceLocalHeap && allocateResult == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
+        s_allocationEvidence.videoMemoryExhausted = true;
+      }
+
+      DxvkMemoryDiagnostics::get().recordDriverFailure(type->memTypeId, type->heapId, size, allocateResult, DxvkMemoryDiagnostics::nowMs());
       return DxvkDeviceMemory();
+    }
+    // NV-DXVK end
     
     if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
       VkResult status = m_vkd->vkMapMemory(m_vkd->device(), result.memHandle, 0, VK_WHOLE_SIZE, 0, &result.memPointer);
@@ -656,6 +774,9 @@ DxvkMemory::DxvkMemory() { }
       if (status != VK_SUCCESS) {
         Logger::err(str::format("DxvkMemoryAllocator: Mapping memory failed with ", status));
         m_vkd->vkFreeMemory(m_vkd->device(), result.memHandle, nullptr);
+        // NV-DXVK start: Memory diagnostics
+        s_allocationEvidence.mapFailed = true;
+        // NV-DXVK end
         return DxvkDeviceMemory();
       }
     }
@@ -769,13 +890,44 @@ DxvkMemory::DxvkMemory() { }
   bool DxvkMemoryAllocator::shouldFreeEmptyChunks(
     const DxvkMemoryHeap*       heap,
           VkDeviceSize          allocationSize) const {
-    VkDeviceSize budget = heap->budget;
+    // NV-DXVK start: Memory fault injection
+    VkDeviceSize budget = getHeapBudget(heap);
+    // NV-DXVK end
 
     if (!budget)
       budget = (heap->properties.size * 4) / 5;
 
     return heap->stats.totalAllocated() + allocationSize > budget;
   }
+
+
+  // NV-DXVK start: Memory fault injection
+  VkDeviceSize DxvkMemoryAllocator::getHeapBudget(
+    const DxvkMemoryHeap*       heap) const {
+    const VkDeviceSize injectedHeapLimit = DxvkMemoryDiagnostics::injectedHeapLimit();
+
+    if (injectedHeapLimit == 0 || !(heap->properties.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+      return heap->budget;
+    }
+
+    return heap->budget ? std::min(heap->budget, injectedHeapLimit) : injectedHeapLimit;
+  }
+  // NV-DXVK end
+
+
+  // NV-DXVK start: Memory diagnostics
+  bool DxvkMemoryAllocator::hasMemoryType(
+          uint32_t              typeBits,
+          VkMemoryPropertyFlags flags) const {
+    for (uint32_t i = 0; i < m_memProps.memoryTypeCount; i++) {
+      if ((typeBits & (1u << i)) && (m_memTypes[i].memType.propertyFlags & flags) == flags) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+  // NV-DXVK end
 
 
   void DxvkMemoryAllocator::freeEmptyChunks(

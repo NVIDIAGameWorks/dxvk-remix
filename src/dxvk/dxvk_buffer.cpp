@@ -71,7 +71,7 @@ namespace dxvk {
     m_lazyAlloc = m_physSliceCount > 1;
 
     // NV-DXVK start: Implement memory profiler
-    m_tracker.finalize(m_physSliceStride, (m_buffer.memory.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0, (m_buffer.memory.propertyFlags() != memFlags));
+    m_tracker.finalize(m_physSliceStride, (m_buffer.memory.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0, m_buffer.memory.wasDemoted());
 
     // NV-DXVK start: add debug names to buffer objects
     if (device->vkd()->vkSetDebugUtilsObjectNameEXT) {
@@ -343,14 +343,18 @@ namespace dxvk {
     
     VkBufferView result = VK_NULL_HANDLE;
 
-    if (m_vkd->vkCreateBufferView(m_vkd->device(),
-          &viewInfo, nullptr, &result) != VK_SUCCESS) {
+    // NV-DXVK start: Report the result of a failed buffer view creation
+    const VkResult status = m_vkd->vkCreateBufferView(m_vkd->device(),
+          &viewInfo, nullptr, &result);
+
+    if (status != VK_SUCCESS) {
       throw DxvkError(str::format(
-        "DxvkBufferView: Failed to create buffer view:",
+        "DxvkBufferView: Failed to create buffer view: ", status,
         "\n  Offset: ", viewInfo.offset,
         "\n  Range:  ", viewInfo.range,
         "\n  Format: ", viewInfo.format));
     }
+    // NV-DXVK end
 
     return result;
   }

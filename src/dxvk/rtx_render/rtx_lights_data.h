@@ -27,7 +27,7 @@
 
 #define LIST_LIGHT_CONSTANTS(X) \
   /*Parameter Name,   USD Token String,       Type,    Min Value,    Max Value,    Default Value */ \
-  X(Radius,                  radius,                    float,   0.f,          FLOAT16_MAX,  0.f) \
+  X(Radius,                  radius,                    float,   0.f,          kLightFloat16Max, 0.f) \
   X(Width,                   width,                     float,   0.f,          FLT_MAX,      0.f) \
   X(Height,                  height,                    float,   0.f,          FLT_MAX,      0.f) \
   X(Length,                  length,                    float,   0.f,          FLT_MAX,      0.f) \
@@ -38,9 +38,9 @@
   X(Exposure,                exposure,                  float,   -FLT_MAX,     FLT_MAX,      0.f) \
   X(Intensity,               intensity,                 float,   0.f,          FLT_MAX,      1.f) \
   X(ConeAngleRadians,        shaping:cone:angle,        float,   -FLT_MAX,     FLT_MAX,      180.f * kDegreesToRadians) \
-  X(ConeSoftness,            shaping:cone:softness,     float,   0.f,          FLOAT16_MAX,  0.f) \
-  X(Focus,                   shaping:focus,             float,   0.f,          FLOAT16_MAX,  0.f) \
-  X(VolumetricRadianceScale, volumetric_radiance_scale, float,   0.f,          FLOAT16_MAX,  1.f)
+  X(ConeSoftness,            shaping:cone:softness,     float,   0.f,          kLightFloat16Max, 0.f) \
+  X(Focus,                   shaping:focus,             float,   0.f,          kLightFloat16Max, 0.f) \
+  X(VolumetricRadianceScale, volumetric_radiance_scale, float,   0.f,          kLightFloat16Max, 1.f)
 
 #define WRITE_PARAMETER_MEMBERS(name, usd_attr, type, minVal, maxVal, defaultVal) \
       type m_##name = defaultVal;
@@ -51,6 +51,10 @@
 struct remixapi_LightInfoUSDEXT;
 
 namespace dxvk {
+  // The largest float below FLOAT16_MAX, since light validation and GPU encoding require values strictly below it.
+  // Floats near 65504 are spaced 2^-8 apart.
+  constexpr float kLightFloat16Max = FLOAT16_MAX - 0.00390625f;
+
   struct LightData {
     static std::optional<LightData> tryCreate(const D3DLIGHT9& light);
     static std::optional<LightData> tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform);

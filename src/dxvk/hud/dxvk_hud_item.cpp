@@ -5,6 +5,9 @@
 
 #include "rtx_render/rtx_options.h"
 #include "rtx_render/rtx_texture_manager.h"
+// NV-DXVK start: Memory diagnostics
+#include "../dxvk_memory_diagnostics.h"
+// NV-DXVK end
 
 namespace dxvk::hud {
 
@@ -649,6 +652,34 @@ namespace dxvk::hud {
         position.y += 16.0f;
       }
     }
+
+    // NV-DXVK start: Memory diagnostics
+    const DxvkMemoryDiagnostics& diagnostics = DxvkMemoryDiagnostics::get();
+    const uint32_t fallbackCount = diagnostics.getTotalFallbackCount();
+    const uint32_t failureCount = diagnostics.getFailureCount();
+
+    if (fallbackCount != 0 || failureCount != 0) {
+      VkDeviceSize fallbackBytes = 0;
+
+      for (uint32_t cat = DxvkMemoryStats::Category::First; cat <= DxvkMemoryStats::Category::Last; cat++) {
+        fallbackBytes += diagnostics.getFallbackBytes(DxvkMemoryStats::Category(cat));
+      }
+
+      const VkDeviceSize fallbackMib = fallbackBytes >> 20;
+
+      position.y += 20.0f;
+      renderer.drawText(16.0f,
+        { position.x, position.y },
+        { 1.0f, 0.6f, 0.2f, 1.0f },
+        "Sysmem fallback:");
+
+      renderer.drawText(16.0f,
+        { position.x + 168.0f, position.y },
+        { 1.0f, 1.0f, 1.0f, 1.0f },
+        str::format(fallbackCount, " allocs, ", fallbackMib, " MB, ", failureCount, " failed"));
+      position.y += 4.0f;
+    }
+    // NV-DXVK end
 
     position.y += 4.0f;
     return position;

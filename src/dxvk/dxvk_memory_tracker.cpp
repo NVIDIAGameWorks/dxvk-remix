@@ -1,5 +1,8 @@
 #pragma once
 #include "dxvk_memory_tracker.h"
+// NV-DXVK start: Memory diagnostics
+#include "dxvk_memory_diagnostics.h"
+// NV-DXVK end
 #include "rtx_render/rtx_imgui.h"
 #include "rtx_render/rtx_option.h"
 #include "imgui/imgui.h"
@@ -81,11 +84,13 @@ namespace dxvk {
   }
 
 
+  // NV-DXVK start: Fix demotion tracking
   void GpuMemoryTracker::finalize(size_t size, bool isDeviceResident, bool wasDemoted) {
     m_stats.size = size;
     m_stats.isDeviceResident = isDeviceResident;
-    m_stats.wasDemoted = isDeviceResident && wasDemoted;
+    m_stats.wasDemoted = wasDemoted;
   }
+  // NV-DXVK end
 
   void GpuMemoryTracker::updateSize(size_t size) {
     m_stats.size = size;
@@ -177,6 +182,14 @@ namespace dxvk {
   void GpuMemoryTracker::renderGui() {
     if (RemixGui::CollapsingHeader("Memory Profiler", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::TextWrapped("This is a tool to help diagnose memory related problems in Remix.  Press the `Sample Memory` button to take a snapshot of all the memory allocations currently in use by the application.  You can refresh this list at any time by clicking that button.  Once you have a snapshot, the data will be displayed as a list below.");
+
+      // NV-DXVK start: Memory diagnostics
+      // Fallbacks and failures are recorded whether or not the profiler is enabled.
+      const DxvkMemoryDiagnostics& diagnostics = DxvkMemoryDiagnostics::get();
+      const bool hasPressure = diagnostics.getTotalFallbackCount() != 0 || diagnostics.getFailureCount() != 0;
+      const ImVec4 pressureColor = hasPressure ? ImVec4(1.0f, 0.6f, 0.2f, 1.0f) : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+      ImGui::TextColored(pressureColor, "%s", diagnostics.formatSummary().c_str());
+      // NV-DXVK end
 
       if (!MemoryTrackerSettings::enable()) {
         ImGui::TextWrapped("Memory profiler is disabled.  Please enable in the rtx.conf with `rtx.profiler.memory.enable = True` or with `RTX_PROFILER_MEMORY_ENABLE = 1` environment variable");

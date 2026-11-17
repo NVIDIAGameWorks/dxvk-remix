@@ -34,6 +34,15 @@ namespace dxvk {
   // caught by crashpad) or a normal exit, so it can show an appropriate dialog.
   static constexpr uint32_t kRemixGpuCrashExitCode = 0x60D0DEADu;
 
+  // The GPU-crash exit code used when video memory ran out shortly before the crash.
+  // The exit code carries this to the bridge client, because the window message sent at crash time
+  // can be handled only after the client has already built the crash dialog.
+  static constexpr uint32_t kRemixGpuCrashAfterMemoryExhaustedExitCode = 0x60D0DEAEu;
+
+  inline bool isRemixGpuCrashExitCode(uint32_t exitCode) {
+    return exitCode == kRemixGpuCrashExitCode || exitCode == kRemixGpuCrashAfterMemoryExhaustedExitCode;
+  }
+
   // Named window message sent by the runtime to the bridge client immediately when a GPU crash is
   // detected — before the slow Sentry capture and upload. The bridge client registers a handler
   // via gpRemixMessageChannel so it can disable the Windows ghost dialog and prepare the crash
@@ -52,7 +61,8 @@ namespace dxvk {
 
   // Builds the crash-report dialog message from shared parts so the runtime and bridge produce
   // identical wording. \p hasPermission selects the "will upload" vs. "ask for permission" text.
-  inline std::wstring buildCrashReportMessage(CrashPromptKind kind, bool hasPermission) {
+  // \p memoryExhausted adds a line saying video memory ran out shortly before the crash.
+  inline std::wstring buildCrashReportMessage(CrashPromptKind kind, bool hasPermission, bool memoryExhausted = false) {
     std::wstring message;
 
     // Part 1: what happened.
@@ -66,6 +76,12 @@ namespace dxvk {
     case CrashPromptKind::GpuImmediate:
       message = L"The RTX Remix Runtime has encountered a GPU Crash. The application will close.\n\n";
       break;
+    }
+
+    if (memoryExhausted) {
+      message +=
+        L"Video memory ran out shortly before the crash. Lowering the resolution, texture quality or upscaler quality, "
+        L"or closing other applications that use the GPU, may avoid it.\n\n";
     }
 
     // Part 2: upload intent / consent request.

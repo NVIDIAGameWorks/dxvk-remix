@@ -34,6 +34,7 @@
 // NV-DXVK start: Shared crash-report exit code / dialog helpers
 #include "../util/util_crash_report.h"
 #include "rtx_render/rtx_bridge_message_channel.h"
+#include "dxvk_memory_diagnostics.h"
 // NV-DXVK end
 #include "../util/util_sentry.h"
 
@@ -141,6 +142,10 @@ namespace dxvk {
 
   // NV-DXVK start: GPU crash diagnostics
   void DxvkSubmissionQueue::onGpuCrash(const char* reason) {
+    // Classify memory pressure as of detection, before the diagnostics and Aftermath wait below.
+    // Every thread captures before it can return, so a second thread cannot reach handleDeviceLost() before the result exists.
+    m_gpuCrashMemorySnapshot.capture(DxvkMemoryDiagnostics::nowMs());
+
     if (m_gpuCrashHandled.exchange(true)) {
       return;
     }
@@ -420,16 +425,28 @@ namespace dxvk {
     // prepare the crash dialog window before the slow Sentry capture/upload below.
     BridgeMessageChannel::get().send(kGpuCrashNotifyMsgName, 0, 0);
 
+    // onGpuCrash() has already captured the snapshot on every path, so this capture only covers a path that skips it.
+    // The one result drives the log, the Sentry tag, the dialog and the exit code.
+    m_gpuCrashMemorySnapshot.capture(DxvkMemoryDiagnostics::nowMs());
+    const bool memoryExhausted = m_gpuCrashMemorySnapshot.videoMemoryExhausted();
+
+    // Record the memory state in the log and in the crash report.
+    const std::string memoryReport = m_device->getCommon()->memoryManager().formatMemoryReport();
+    Logger::err(str::format("Memory state at the GPU crash", memoryExhausted ? ", shortly after video memory ran out" : "", ":\n", memoryReport));
+    DxvkMemoryDiagnostics::get().publishToCrashReporting(memoryReport);
+    sentry::setTag("memory_vram_exhausted_recent", memoryExhausted ? "true" : "false");
+
     waitForAftermathDump();
     // Capture/upload the GPU crash (no-op if Sentry is inactive) before tearing down.
-    sentry::processPendingGpuCrashReports();
+    sentry::processPendingGpuCrashReports(memoryExhausted);
     Logger::err("DxvkSubmissionQueue: Exiting after GPU device loss");
     // Signal the GPU-crash exit code so the bridge can distinguish this from a CPU crash.
+    // A second GPU-crash exit code tells the bridge that video memory ran out shortly before the crash.
     // sentry::shutdown() is intentionally omitted here: sentry_close() blocks for several seconds
     // waiting for a network flush, but at this point crash data is already captured and cached
     // locally — the bridge client will trigger upload after the user grants consent. The
     // out-of-process crashpad_handler.exe handles any remaining cleanup independently.
-    env::killProcess(kRemixGpuCrashExitCode);
+    env::killProcess(memoryExhausted ? kRemixGpuCrashAfterMemoryExhaustedExitCode : kRemixGpuCrashExitCode);
   }
   // NV-DXVK end
 }

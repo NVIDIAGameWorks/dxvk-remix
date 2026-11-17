@@ -166,7 +166,7 @@ namespace dxvk {
       dedicatedRequirements, dedMemoryAllocInfo, memFlags, hints, category);
     
     // NV-DXVK start: Implement memory profiler
-    m_tracker.finalize(m_image.memory.length(), (m_image.memory.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0, (m_image.memory.propertyFlags() != memFlags));
+    m_tracker.finalize(m_image.memory.length(), (m_image.memory.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0, m_image.memory.wasDemoted());
     // NV-DXVK end
     
     // Try to bind the allocated memory slice to the image
@@ -360,10 +360,13 @@ namespace dxvk {
         VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
     }
     
-    if (m_vkd->vkCreateImageView(m_vkd->device(),
-          &viewInfo, nullptr, &m_views[type]) != VK_SUCCESS) {
+    // NV-DXVK start: Report the result of a failed image view creation
+    const VkResult result = m_vkd->vkCreateImageView(m_vkd->device(),
+          &viewInfo, nullptr, &m_views[type]);
+
+    if (result != VK_SUCCESS) {
       throw DxvkError(str::format(
-        "DxvkImageView: Failed to create image view:"
+        "DxvkImageView: Failed to create image view: ", result,
         "\n  View type:       ", viewInfo.viewType,
         "\n  View format:     ", viewInfo.format,
         "\n  Subresources:    ",
@@ -384,6 +387,7 @@ namespace dxvk {
         "\n    Usage:         ", std::hex, m_image->info().usage,
         "\n    Tiling:        ", m_image->info().tiling));
     }
+    // NV-DXVK end
   }
   
 }

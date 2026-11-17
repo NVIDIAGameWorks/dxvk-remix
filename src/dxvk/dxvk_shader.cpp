@@ -82,8 +82,12 @@ namespace dxvk {
     info.codeSize = code.size();
     info.pCode    = code.data();
     
-    if (m_vkd->vkCreateShaderModule(m_vkd->device(), &info, nullptr, &m_stage.module) != VK_SUCCESS)
-      throw DxvkError("DxvkComputePipeline::DxvkComputePipeline: Failed to create shader module");
+    // NV-DXVK start: Report the result of a failed shader module creation
+    const VkResult result = m_vkd->vkCreateShaderModule(m_vkd->device(), &info, nullptr, &m_stage.module);
+
+    if (result != VK_SUCCESS)
+      throw DxvkError(str::format("DxvkShaderModule: Failed to create shader module ", shader->debugName(), ": ", result));
+    // NV-DXVK end
 
     // NV-DXVK start: Integrate Aftermath
     registerAftermathShader(code.data(), code.size(), shader->debugName());

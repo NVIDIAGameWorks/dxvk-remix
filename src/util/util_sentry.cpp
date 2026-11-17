@@ -282,7 +282,7 @@ namespace sentry {
         || LocalData::app().get<bool>(kAllowCrashReportingKey, false);
     }
 
-    bool promptGpuCrashConsent() {
+    bool promptGpuCrashConsent(bool memoryExhausted) {
       if (isAutomationMode()) {
         return true;
       }
@@ -291,7 +291,7 @@ namespace sentry {
         return LocalData::app().get<bool>(kAllowCrashReportingKey, false);
       }
       const bool hasPermission = LocalData::app().get<bool>(kAllowCrashReportingKey, false);
-      const std::wstring message = buildCrashReportMessage(CrashPromptKind::GpuImmediate, hasPermission);
+      const std::wstring message = buildCrashReportMessage(CrashPromptKind::GpuImmediate, hasPermission, memoryExhausted);
       if (hasPermission) {
         MessageBoxW(nullptr, message.c_str(), kCrashReportDialogTitle, MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
         return true;
@@ -819,7 +819,7 @@ namespace sentry {
     s_pendingGpuCrashInfo = crashInfo;
   }
 
-  void processPendingGpuCrashReports() {
+  void processPendingGpuCrashReports(bool memoryExhausted) {
     if (!isSentryActive()) {
       return;
     }
@@ -849,7 +849,7 @@ namespace sentry {
         // unconditionally. Without the bridge there is no later upload opportunity, so we only capture
         // if the user consents at the dialog promptGpuCrashConsent() shows here.
         const bool bridgeActive = env::isRemixBridgeActive();
-        const bool consentGranted = promptGpuCrashConsent();
+        const bool consentGranted = promptGpuCrashConsent(memoryExhausted);
         if (consentGranted || bridgeActive) {
           if (consentGranted) {
             sentry_user_consent_give();
@@ -894,7 +894,7 @@ namespace sentry {
 
   void queueGpuCrashReport(const char*, const AftermathCrashInfo&) {}
 
-  void processPendingGpuCrashReports() {}
+  void processPendingGpuCrashReports(bool) {}
 
 } // namespace sentry
 } // namespace dxvk
