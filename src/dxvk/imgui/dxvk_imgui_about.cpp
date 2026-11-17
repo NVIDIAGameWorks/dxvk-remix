@@ -101,6 +101,7 @@ namespace dxvk {
           "Leonardo Leotte",
           "Enock Lubega",
           "Jeffrey 'skurtyyskirts' Munoz",
+          "Rodney 'rodneypantonial' Pantonial",
           "Nico Rodrigues-McKenna",
           "Friedrich 'pixelcluster' Vock",
           "James 'jdswebb' Webb",

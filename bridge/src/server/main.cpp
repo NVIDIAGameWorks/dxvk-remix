@@ -272,6 +272,27 @@ HRESULT ReturnSurfaceDataToClient(IDirect3DSurface9* pReturnSurfaceData, HRESULT
   return hresult;
 }
 
+// Sends the HRESULT, then the whole buffer as one blob, to a client that freed its copy of the buffer.
+template<typename T>
+static void ReturnBufferDataToClient(T* const pBuffer, const UINT currentUID) {
+  ServerMessage c(Commands::Bridge_Response, currentUID);
+  std::conditional_t<std::is_same_v<T, IDirect3DVertexBuffer9>, D3DVERTEXBUFFER_DESC, D3DINDEXBUFFER_DESC> desc = {};
+  HRESULT hresult = pBuffer != nullptr ? pBuffer->GetDesc(&desc) : D3DERR_INVALIDCALL;
+  void* pData = nullptr;
+  if (SUCCEEDED(hresult)) {
+    hresult = pBuffer->Lock(0, 0, &pData, D3DLOCK_READONLY);
+  }
+  c.send_data(hresult);
+  if (FAILED(hresult)) {
+    return;
+  }
+  if (auto* const blobPacketPtr = c.begin_data_blob(desc.Size)) {
+    memcpy(blobPacketPtr, pData, desc.Size);
+    c.end_data_blob();
+  }
+  pBuffer->Unlock();
+}
+
 template<typename T>
 static bool dumpLeakedObjects(const char* name, const T& map) {
   if (!map.empty()) {
@@ -2412,6 +2433,10 @@ void ProcessDeviceCommandQueue() {
       {
         // This is a no-op right now because we're doing all the logic on Unlock
         GET_HND(pHandle);
+        if (Commands::IsReturnData(rpcHeader.flags)) {
+          ReturnBufferDataToClient((IDirect3DVertexBuffer9*) gpD3DResources[pHandle], currentUID);
+          break;
+        }
         void* data = nullptr;
         DeviceBridge::get_data(&data);
         break;
@@ -2508,6 +2533,10 @@ void ProcessDeviceCommandQueue() {
       {
         // This is a no-op right now because we're doing all the logic on Unlock
         GET_HND(pHandle);
+        if (Commands::IsReturnData(rpcHeader.flags)) {
+          ReturnBufferDataToClient((IDirect3DIndexBuffer9*) gpD3DResources[pHandle], currentUID);
+          break;
+        }
         void* data = nullptr;
         DeviceBridge::get_data(&data);
         break;
@@ -2613,7 +2642,7 @@ void ProcessDeviceCommandQueue() {
       }
       case IDirect3DSurface9_LockRect:
       {
-        // Currently we only recieve calls for LockRect in cases where backbuffer data is to be copied for screenshots
+        // The client sends LockRect to copy back buffer data for screenshots, and to fetch a freed copy of a MANAGED surface
         GET_HND(pHandle);
         const auto pSurface = (IDirect3DSurface9*) gpD3DResources[pHandle];
         HRESULT hresult = ReturnSurfaceDataToClient(pSurface, S_OK, currentUID);
