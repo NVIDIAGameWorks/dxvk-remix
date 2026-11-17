@@ -134,16 +134,6 @@ namespace dxvk {
   void DxvkToneMapping::showImguiSettings() {
 
     RemixGui::DragFloat("Global Exposure", &exposureBiasObject(), 0.01f, -4.f, 4.f);
-    
-    RemixGui::Checkbox("Color Grading Enabled", &colorGradingEnabledObject());
-    if (colorGradingEnabled()) {
-      ImGui::Indent();
-      RemixGui::DragFloat("Contrast", &contrastObject(), 0.01f, 0.f, 1.f);
-      RemixGui::DragFloat("Saturation", &saturationObject(), 0.01f, 0.f, 1.f);
-      RemixGui::DragFloat3("Color Balance", &colorBalanceObject(), 0.01f, 0.f, 1.f);
-      RemixGui::Separator();
-      ImGui::Unindent();
-    }
 
     RemixGui::Checkbox("Tonemapping Enabled", &tonemappingEnabledObject());
     if (tonemappingEnabled()) {
@@ -166,7 +156,6 @@ namespace dxvk {
 
         ImGui::Unindent();
       }
-      RemixGui::Separator();
       ImGui::Unindent();
     }
   }

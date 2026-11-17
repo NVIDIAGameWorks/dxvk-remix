@@ -106,6 +106,12 @@ void main(uint2 threadId : SV_DispatchThreadID)
     texelFinal = ACESFilm(texelFinal, cb.useLegacyACES);
   }
 
+  // Color grading after tonemapping, shared with the global tonemapper.
+  if (cb.colorGradingEnabled != 0)
+  {
+    texelFinal = colorGrading(texelFinal, cb.colorBalance, cb.contrast, cb.saturation);
+  }
+
   // sRGB conversion and dithering are now performed by the final output pass,
   // which runs after all post-process effects (lens effects, etc.).
   OutputTexture[threadId] = vec4(texelFinal, 1.0);

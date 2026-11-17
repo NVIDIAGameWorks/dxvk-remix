@@ -96,3 +96,13 @@ float3 ACESFilm(float3 color, bool useLegacyACES, bool suppressBlackLevelClamp =
   }
   return ACESFitted(color, suppressBlackLevelClamp);
 }
+
+// Color grading applied after tonemapping by both the global and the local tonemapper: color balance, then contrast around
+// mid grey (0.18), then saturation. The result is clamped to [0, 1]: a saturation above 1 extrapolates away from the
+// luminance and can push channels outside that range.
+float3 colorGrading(float3 color, float3 colorBalance, float contrast, float saturation)
+{
+  color = color * colorBalance;
+  color = saturate((contrast * (color - 0.18f)) + 0.18f);
+  return saturate(mix(float3(calcBt709Luminance(color)), color, saturation));
+}

@@ -101,8 +101,8 @@ namespace dxvk {
     };
 
     RTX_OPTION("rtx.tonemap", float, exposureBias, 0.f, "The exposure value to use for the global tonemapper when auto exposure is disabled, or a bias multiplier on top of the auto exposure's calculated exposure value.");
-    RTX_OPTION("rtx.tonemap", bool, tonemappingEnabled, true, "A flag to enable or disable the local tonemapper. Note this flag will only take effect when the global tonemapper is set to be used (as opposed to another option such as the local tonemapper).");
-    RTX_OPTION("rtx.tonemap", bool, colorGradingEnabled, false, "A flag to enable or disable color grading after the global tonemapper's tonemapping pass, but before gamma correction and dithering (if enabled).");
+    RTX_OPTION("rtx.tonemap", bool, tonemappingEnabled, true, "A flag to enable or disable the global tonemapper's tone curve (and its optional ACES finalization). Only takes effect when the global tonemapper is used; the local tonemapper ignores it. Exposure and color grading still apply when it is disabled.");
+    RTX_OPTION("rtx.tonemap", bool, colorGradingEnabled, false, "A flag to enable or disable color grading after the tonemapping pass of the global or local tonemapper, but before gamma correction and dithering (if enabled).");
 
     // Color grading settings
     RTX_OPTION("rtx.tonemap", Vector3, colorBalance, Vector3(1.0f, 1.0f, 1.0f), "The color tint to apply after tonemapping when color grading is enabled for the tonemapper (rtx.tonemap.colorGradingEnabled). Values should be in the range [0, 1].");

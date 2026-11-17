@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "rtx_local_tone_mapping.h"
+#include "rtx_tone_mapping.h"
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_render/rtx_shader_manager.h"
@@ -273,6 +274,11 @@ namespace dxvk {
       pushArgs.enableAutoExposure = enableAutoExposure;
       pushArgs.finalizeWithACES = finalizeWithACES();
       pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
+      // Color grading uses the global tonemapper's rtx.tonemap.* grading options.
+      pushArgs.colorGradingEnabled = DxvkToneMapping::colorGradingEnabled();
+      pushArgs.colorBalance = DxvkToneMapping::colorBalance();
+      pushArgs.contrast = DxvkToneMapping::contrast();
+      pushArgs.saturation = DxvkToneMapping::saturation();
 
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 

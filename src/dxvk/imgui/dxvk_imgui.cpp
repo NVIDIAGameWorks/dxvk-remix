@@ -3493,6 +3493,16 @@ namespace dxvk {
         } else {
           common->metaLocalToneMapping().showImguiSettings();
         }
+        // Color grading applies after either tonemapper.
+        RemixGui::Separator();
+        RemixGui::Checkbox("Color Grading Enabled", &DxvkToneMapping::colorGradingEnabledObject());
+        if (DxvkToneMapping::colorGradingEnabled()) {
+          ImGui::Indent();
+          RemixGui::DragFloat("Contrast", &DxvkToneMapping::contrastObject(), 0.01f, 0.f, 1.f);
+          RemixGui::DragFloat("Saturation", &DxvkToneMapping::saturationObject(), 0.01f, 0.f, 1.f);
+          RemixGui::DragFloat3("Color Balance", &DxvkToneMapping::colorBalanceObject(), 0.01f, 0.f, 1.f);
+          ImGui::Unindent();
+        }
         if (RtxOptions::showLegacyACESOption()) {
           RemixGui::Separator();
           RemixGui::Checkbox("Use Legacy ACES", &RtxOptions::useLegacyACESObject());
