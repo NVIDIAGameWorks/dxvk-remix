@@ -1049,8 +1049,8 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::GetRenderTarget(DWORD RenderTargetInd
     }
     WAIT_FOR_OPTIONAL_SERVER_RESPONSE("GetRenderTarget()", D3DERR_INVALIDCALL, currentUID);
   }
-  
-  return S_OK;
+  // An empty slot returns D3DERR_NOTFOUND, as in d3d9. Callers often test only the HRESULT.
+  return D3DERR_NOTFOUND;
 }
 
 template<bool EnableSync>
@@ -1100,6 +1100,9 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::GetDepthStencilSurface(IDirect3DSurfa
         currentUID = c.get_uid();
         c.send_data(pLssDepthStencil->getId());
       }
+    } else {
+      // No depth-stencil surface returns D3DERR_NOTFOUND, as in d3d9.
+      return D3DERR_NOTFOUND;
     }
   }
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("GetDepthStencilSurface()", D3DERR_INVALIDCALL, currentUID);
