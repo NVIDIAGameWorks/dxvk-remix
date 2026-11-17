@@ -69,7 +69,7 @@ namespace dxvk {
       target = 32768;
       break;
     case QualityPreset::High:
-      target = 65566;
+      target = 65536;
       break;
     case QualityPreset::Ultra:
       target = 0;
