@@ -240,6 +240,21 @@ exe = executable('test_remix_api_version', files('test_remix_api_version.cpp'),
 test('test_remix_api_version', exe, env: test_env)
 tests += exe
 
+exe = executable('test_memory_diagnostics', files('test_memory_diagnostics.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_memory_diagnostics', exe, env: test_env)
+test('test_memory_exhaustion_timestamp', exe, args : ['--outcome-timestamp'], env : test_env)
+test('test_memory_exhaustion_telemetry', exe, args : ['--exhaustion-telemetry'], env : test_env)
+foreach scenario : ['driver', 'injected-limit', 'simulated-driver', 'host', 'mapping', 'budget']
+  test('test_memory_allocator_' + scenario, exe, args : ['--allocator-retry', scenario],
+    env : test_env, suite : 'gpu', timeout : 120, is_parallel : false)
+endforeach
+foreach scenario : ['fallback', 'fallback-driver']
+  test('test_memory_allocator_' + scenario, exe, args : ['--allocator-' + scenario],
+    env : test_env, suite : 'gpu', timeout : 120, is_parallel : false)
+endforeach
+tests += exe
+
 if dxvk_is_x64 and get_option('remix_with_shim')
   exe = executable('test_remix_shim', files('test_remix_shim.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
   test('test_remix_shim', exe, env: test_env, args: d3d9_shim_dll.full_path(), depends: [ d3d9_shim_dll, d3d9_impl_dll ])

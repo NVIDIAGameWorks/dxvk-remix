@@ -110,8 +110,12 @@ namespace dxvk {
     info.poolSizeCount = pools.size();
     info.pPoolSizes = pools.data();
 
-    if (m_vkd->vkCreateDescriptorPool(m_vkd->device(), &info, nullptr, &m_pool) != VK_SUCCESS)
-      throw DxvkError("DxvkDescriptorPool: Failed to create descriptor pool");
+    // NV-DXVK start: Report the result of a failed descriptor pool creation
+    const VkResult result = m_vkd->vkCreateDescriptorPool(m_vkd->device(), &info, nullptr, &m_pool);
+
+    if (result != VK_SUCCESS)
+      throw DxvkError(str::format("DxvkDescriptorPool: Failed to create descriptor pool: ", result));
+    // NV-DXVK end
   }
 
   // NV-DXVK start: Adding global bindless resources
@@ -119,8 +123,10 @@ namespace dxvk {
     : m_vki(vki)
     , m_vkd(vkd) {
 
-    if (m_vkd->vkCreateDescriptorPool(m_vkd->device(), &info, nullptr, &m_pool) != VK_SUCCESS)
-      throw DxvkError("DxvkDescriptorPool: Failed to create descriptor pool");
+    const VkResult result = m_vkd->vkCreateDescriptorPool(m_vkd->device(), &info, nullptr, &m_pool);
+
+    if (result != VK_SUCCESS)
+      throw DxvkError(str::format("DxvkDescriptorPool: Failed to create descriptor pool: ", result));
   }
   // NV-DXVK end
 
@@ -139,8 +145,15 @@ namespace dxvk {
     info.pSetLayouts = &layout;
 
     VkDescriptorSet set = VK_NULL_HANDLE;
-    if (m_vkd->vkAllocateDescriptorSets(m_vkd->device(), &info, &set) != VK_SUCCESS)
+    const VkResult result = m_vkd->vkAllocateDescriptorSets(m_vkd->device(), &info, &set);
+
+    // A full pool is expected, since callers then move on to a fresh pool.
+    if (result != VK_SUCCESS) {
+      if (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL) {
+        Logger::err(str::format("DxvkDescriptorPool: Failed to allocate descriptor set", name ? str::format(" ", name) : std::string(), ": ", result));
+      }
       return VK_NULL_HANDLE;
+    }
 
     if (name && m_vkd->vkSetDebugUtilsObjectNameEXT) {
       VkDebugUtilsObjectNameInfoEXT nameInfo;

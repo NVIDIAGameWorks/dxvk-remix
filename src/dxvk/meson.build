@@ -110,6 +110,8 @@ dxvk_src = files([
   'dxvk_limits.h',
   'dxvk_memory.cpp',
   'dxvk_memory.h',
+  'dxvk_memory_diagnostics.cpp',
+  'dxvk_memory_diagnostics.h',
   'dxvk_meta_blit.cpp',
   'dxvk_meta_blit.h',
   'dxvk_meta_clear.cpp',

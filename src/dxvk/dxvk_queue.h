@@ -9,6 +9,9 @@
 #include "../vulkan/vulkan_presenter.h"
 
 #include "dxvk_cmdlist.h"
+// NV-DXVK start: GPU crash diagnostics
+#include "dxvk_memory_diagnostics.h"
+// NV-DXVK end
 #include "rtx_render/rtx_camera.h"
 
 namespace dxvk {
@@ -257,6 +260,8 @@ namespace dxvk {
 
     // NV-DXVK start: GPU crash diagnostics
     std::atomic<bool>       m_gpuCrashHandled = { false };
+    // Whether video memory ran out shortly before the crash, as of when it was detected.
+    DxvkGpuCrashMemorySnapshot m_gpuCrashMemorySnapshot;
     // NV-DXVK end
     
     std::atomic<bool>       m_stopped = { false };

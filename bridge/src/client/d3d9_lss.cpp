@@ -209,14 +209,15 @@ namespace {
   }
 
   // Shows a single crash popup, applies user choice, then exits.
-  [[noreturn]] void promptCrashReportAndApplyChoice(bool isGpuCrash) {
+  // memoryExhausted adds a line saying video memory ran out shortly before the crash.
+  [[noreturn]] void promptCrashReportAndApplyChoice(bool isGpuCrash, bool memoryExhausted) {
     namespace fs = std::filesystem;
     const auto logsDir = dxvk::util::RtxFileSys::path(dxvk::util::RtxFileSys::Logs);
     const auto sentryDbDir = logsDir / ".sentry-native";
     const bool alreadyHasConsent = userHasCrashReportingPermission();
 
     const dxvk::CrashPromptKind promptKind = isGpuCrash ? dxvk::CrashPromptKind::GpuImmediate : dxvk::CrashPromptKind::CpuImmediate;
-    const std::wstring message = dxvk::buildCrashReportMessage(promptKind, alreadyHasConsent);
+    const std::wstring message = dxvk::buildCrashReportMessage(promptKind, alreadyHasConsent, memoryExhausted);
 
     // Prepare the game window so the dialog is visible on top (demote from topmost + minimize, plus
     // ghost suppression / WndProc fullscreen-restore suppression). This runs on the process-monitor
@@ -283,11 +284,12 @@ void OnServerExited(Process const*, DWORD exitCode) {
   if (BridgeState::getClientState() != BridgeState::ProcessState::DoneProcessing) {
     // The runtime signals GPU crashes (device loss) via a dedicated exit code so we can show a
     // GPU-specific dialog instead of the generic crash prompt.
-    const bool isGpuCrash = (exitCode == dxvk::kRemixGpuCrashExitCode);
-    Logger::warn(format_string("Crash handler: server exited (code=0x%08x, type=%s)",
-        exitCode, isGpuCrash ? "GPU" : "CPU"));
+    const bool isGpuCrash = dxvk::isRemixGpuCrashExitCode(exitCode);
+    const bool memoryExhausted = (exitCode == dxvk::kRemixGpuCrashAfterMemoryExhaustedExitCode);
+    Logger::warn(format_string("Crash handler: server exited (code=0x%08x, type=%s%s)",
+        exitCode, isGpuCrash ? "GPU" : "CPU", memoryExhausted ? ", after video memory ran out" : ""));
     PrintRecentCommandHistory();
-    promptCrashReportAndApplyChoice(isGpuCrash);
+    promptCrashReportAndApplyChoice(isGpuCrash, memoryExhausted);
   }
 
   const auto timeServerEnd = std::chrono::high_resolution_clock::now();

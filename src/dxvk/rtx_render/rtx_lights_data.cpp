@@ -69,7 +69,11 @@
         m_##name = input.m_##name; \
       }
 
+// clamp() passes NaN through, so a NaN is replaced with the default value first.
 #define WRITE_CONSTANT_SANITIZATION(name, usd_attr, type, minVal, maxVal, defaultVal) \
+      if (hasNan(m_##name)) { \
+        m_##name = defaultVal; \
+      } \
       m_##name = clamp(m_##name, minVal, maxVal);
 
 namespace dxvk {

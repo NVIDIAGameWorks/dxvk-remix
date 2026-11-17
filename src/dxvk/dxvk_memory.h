@@ -252,6 +252,14 @@ namespace dxvk {
     operator bool () const {
       return m_memory != VK_NULL_HANDLE;
     }
+
+    // NV-DXVK start: Memory diagnostics
+    // Returns true when the allocation asked for video memory, a memory type could have provided it,
+    // and it was placed in system memory instead.
+    bool wasDemoted() const {
+      return m_wasDemoted;
+    }
+    // NV-DXVK end
     
   private:
     
@@ -263,6 +271,9 @@ namespace dxvk {
     VkDeviceSize          m_length = 0;
     void*                 m_mapPtr = nullptr;
     DxvkMemoryStats::Category m_category = DxvkMemoryStats::Category::Invalid;
+    // NV-DXVK start: Memory diagnostics
+    bool                  m_wasDemoted = false;
+    // NV-DXVK end
     
     void free();
     
@@ -454,6 +465,11 @@ namespace dxvk {
     void freeUnusedChunks();
     // NV-DXVK end
 
+    // NV-DXVK start: Memory diagnostics
+    // Returns per-heap usage and budgets, usage by category, and recorded fallbacks and failures, for logs and crash reports.
+    std::string formatMemoryReport() const;
+    // NV-DXVK end
+
   private:
 
     const Rc<vk::DeviceFn>                 m_vkd;
@@ -515,6 +531,20 @@ namespace dxvk {
 
     void freeEmptyChunks(
       const DxvkMemoryHeap*       heap);
+
+    // NV-DXVK start: Memory fault injection
+    // Returns the heap's budget, lowered by any injected device-local heap limit.
+    // Returns 0 when the heap has no budget.
+    VkDeviceSize getHeapBudget(
+      const DxvkMemoryHeap*       heap) const;
+    // NV-DXVK end
+
+    // NV-DXVK start: Memory diagnostics
+    // Returns true when a memory type allowed by typeBits has all of the given flags.
+    bool hasMemoryType(
+            uint32_t              typeBits,
+            VkMemoryPropertyFlags flags) const;
+    // NV-DXVK end
 
   };
   

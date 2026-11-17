@@ -336,9 +336,13 @@ namespace dxvk::vk {
         VK_IMAGE_ASPECT_COLOR_BIT,
         0, 1, 0, 1 };
       
+      // NV-DXVK start: Log failures here, since callers drop the result
       if ((status = m_vkd->vkCreateImageView(m_vkd->device(),
-          &viewInfo, nullptr, &m_images[i].view)) != VK_SUCCESS)
+          &viewInfo, nullptr, &m_images[i].view)) != VK_SUCCESS) {
+        Logger::err(str::format("Presenter: Failed to create swap chain image view: ", status));
         return status;
+      }
+      // NV-DXVK end
     }
 
     // Create one set of semaphores per swap image
@@ -350,13 +354,19 @@ namespace dxvk::vk {
       semInfo.pNext = nullptr;
       semInfo.flags = 0;
 
+      // NV-DXVK start: Log failures here, since callers drop the result
       if ((status = m_vkd->vkCreateSemaphore(m_vkd->device(),
-          &semInfo, nullptr, &m_semaphores[i].acquire)) != VK_SUCCESS)
+          &semInfo, nullptr, &m_semaphores[i].acquire)) != VK_SUCCESS) {
+        Logger::err(str::format("Presenter: Failed to create acquire semaphore: ", status));
         return status;
+      }
 
       if ((status = m_vkd->vkCreateSemaphore(m_vkd->device(),
-          &semInfo, nullptr, &m_semaphores[i].present)) != VK_SUCCESS)
+          &semInfo, nullptr, &m_semaphores[i].present)) != VK_SUCCESS) {
+        Logger::err(str::format("Presenter: Failed to create present semaphore: ", status));
         return status;
+      }
+      // NV-DXVK end
 
       // NV-DXVK start: add debug names to VkImage objects
       if (m_vkd->vkSetDebugUtilsObjectNameEXT) {
