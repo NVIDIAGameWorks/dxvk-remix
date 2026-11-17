@@ -1055,6 +1055,11 @@ void ProcessDeviceCommandQueue() {
         const auto hresult = pD3DDevice->GetRenderTarget(RenderTargetIndex, &pRenderTarget);
         if (SUCCEEDED(hresult)) {
           gpD3DResources[pSurfaceHandle] = pRenderTarget;
+          // The handle belongs to a client surface that is already linked, and its owner keeps it alive.
+          // A reference held here would never be released for a back buffer and would make Reset fail.
+          if (pRenderTarget != nullptr) {
+            pRenderTarget->Release();
+          }
         }
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         assert(SUCCEEDED(hresult));
@@ -1836,6 +1841,11 @@ void ProcessDeviceCommandQueue() {
         const auto hresult = pSwapChain->GetBackBuffer(iBackBuffer, Type, &pBackbuffer);
         if (SUCCEEDED(hresult)) {
           gpD3DResources[pSurfaceHandle] = pBackbuffer;
+          // The client only unlinks a back buffer and never destroys it, so the swapchain keeps it alive.
+          // A reference held here would keep the back buffer alive through Reset, which then fails.
+          if (pBackbuffer != nullptr) {
+            pBackbuffer->Release();
+          }
         }
         assert(SUCCEEDED(hresult));
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
