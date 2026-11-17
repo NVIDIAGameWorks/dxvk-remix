@@ -242,6 +242,7 @@ namespace dxvk {
     // ============================================================================
     
     // Save this layer's current values to its config file
+    // NoSave values loaded from the file are kept, but runtime edits to NoSave options are never written.
     // Returns true if save was successful, false if layer has no file path
     bool save();
     
