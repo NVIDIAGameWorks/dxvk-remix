@@ -618,7 +618,7 @@ namespace dxvk {
     testTraceSample.effectiveDeltaMs = GlobalTime::get().deltaTimeMs();
     testTraceSample.realWallDeltaMs = GlobalTime::get().realDeltaTimeMs();
     testTraceSample.gpuIdleTimeMs = gpuIdleTimeMilliseconds;
-    testTraceSample.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
+    testTraceSample.surfaceCount = getSceneManager().getSurfaceCount();
     testTraceSample.shaderCompileInflightCount = getCommonObjects()->pipelineManager().remixShaderCompilationCount();
     testTraceSample.debugViewMode = m_common->metaDebugView().getDebugViewIndex();
     testTraceSample.compositeDebugViewMode = m_common->metaDebugView().getCompositeDebugViewIndex();
@@ -666,6 +666,9 @@ namespace dxvk {
 
       this->spillRenderPass(false);
 
+      // GPU-resident Remix API materials register their textures here,
+      // so texture upload and bindless descriptor generation see the same texture table this frame.
+      getSceneManager().prepareSceneResources();
       getCommonObjects()->getTextureManager().submitTexturesToDeviceLocal(this, m_execBarriers, m_execAcquires);
 
       m_execBarriers.recordCommands(m_cmd);
@@ -686,7 +689,7 @@ namespace dxvk {
       getSceneManager().prepareSceneData(this, m_execBarriers);
       
       // If we really don't have any RT to do, just bail early (could be UI/menus rendering)
-      if (getSceneManager().getSurfaceBuffer() != nullptr) {
+      if (getSceneManager().hasRenderableScene()) {
 
         VkExtent3D downscaledExtent = onInjectRtxFrameBegin(targetImage->info().extent);
 
@@ -861,6 +864,24 @@ namespace dxvk {
         capturer->reportPendingCaptureBlocked("no valid camera is detected");
       } else {
         capturer->reportPendingCaptureBlocked("shaders are still compiling");
+      }
+
+      if (GpuResidentScene* scene = getSceneManager().tryGpuResidentScene()) {
+        gpuResidentSceneResolveDeferredFrees(
+          *scene,
+          getSceneManager(),
+          [&] {
+            // Frames without a scene skip the per-frame scene preparation,
+            // so the pending removals are submitted here before new uploads reuse their memory.
+            getSceneManager().prepareSceneResources();
+            getCommonObjects()->getTextureManager().submitTexturesToDeviceLocal(
+              this, m_execBarriers, m_execAcquires);
+            m_execBarriers.recordCommands(m_cmd);
+            getSceneManager().prepareSceneData(this, m_execBarriers);
+            m_execBarriers.recordCommands(m_cmd);
+            flushCommandList();
+            m_device->waitForIdleAndReleaseResources();
+          });
       }
 
       // If raytracing is only disabled because we don't have shaders available, we don't want to clear the scene.
@@ -1394,7 +1415,7 @@ namespace dxvk {
     sharc.setRaytraceArgs(*this, constants);
 
     m_common->metaNeeCache().setRaytraceArgs(constants, m_resetHistory);
-    constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
+    constants.surfaceCount = getSceneManager().getSurfaceCount();
 
     m_common->metaSparseRendering().setSparseRenderingArgs(*this, constants.sparseRenderingArgs);
 

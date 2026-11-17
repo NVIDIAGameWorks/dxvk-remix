@@ -84,7 +84,9 @@ typedef float32_t4x4 f32mat4;
 #define lessThanEqual(x,y)    ((x)<=(y))
 #define mix(x,y,s) lerp(x,y,s)
 
-#define BUFFER_ARRAY(buffers, bufferIndex, elementIndex) buffers[NonUniformResourceIndex(bufferIndex)][elementIndex]
+// A uint16_t index stays 16-bit in the OpAccessChain, where its bits are reinterpreted as a signed int16 without conversion.
+// Indices from 32768 up would then read as negative, so the index is widened to 32 bits.
+#define BUFFER_ARRAY(buffers, bufferIndex, elementIndex) buffers[NonUniformResourceIndex(uint(bufferIndex))][elementIndex]
 
 T texelFetch<T : ITexelElement>(Texture2D<T> tex, int2 loc, int mip)
 {

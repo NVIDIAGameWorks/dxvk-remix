@@ -62,7 +62,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 11
+#define REMIXAPI_VERSION_PATCH 12
 
 
 // External
@@ -210,6 +210,7 @@ extern "C" {
   typedef struct remixapi_MaterialHandle_T* remixapi_MaterialHandle;
   typedef struct remixapi_MeshHandle_T* remixapi_MeshHandle;
   typedef struct remixapi_LightHandle_T* remixapi_LightHandle;
+  typedef struct remixapi_SceneInstanceHandle_T* remixapi_SceneInstanceHandle;
 
   typedef const wchar_t* remixapi_Path;
 
@@ -337,12 +338,18 @@ extern "C" {
   } remixapi_MaterialInfo;
 
 
+  // While rtx.gpuResidentScene is enabled, 'hash' is ignored and Remix generates the handle.
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_CreateMaterial)(
     const remixapi_MaterialInfo*  info,
     remixapi_MaterialHandle*      out_handle);
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_DestroyMaterial)(
     remixapi_MaterialHandle       handle);
+
+  // Changes a material in place. Requires rtx.gpuResidentScene, see documentation/GpuResidentScene.md.
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_UpdateMaterial)(
+    remixapi_MaterialHandle       handle,
+    const remixapi_MaterialInfo*  info);
 
   typedef struct remixapi_HardcodedVertex {
     float    position[3];
@@ -388,6 +395,7 @@ extern "C" {
     uint32_t                                 surfaces_count;
   } remixapi_MeshInfo;
 
+  // While rtx.gpuResidentScene is enabled, 'hash' is ignored and Remix generates the handle.
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_CreateMesh)(
     const remixapi_MeshInfo*  info,
     remixapi_MeshHandle*      out_handle);
@@ -446,6 +454,7 @@ extern "C" {
   } remixapi_WaterSimInfo;
 
   // Set the game state for the water simulation. Call on state changes (e.g. on a level load start).
+  // Has no effect while rtx.gpuResidentScene is enabled.
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_SetWaterSim)(
     const remixapi_WaterSimInfo* info);
 
@@ -459,6 +468,7 @@ extern "C" {
   } remixapi_WaterDisturbanceInfo;
 
   // Queues a disturbance for the water simulation plane.
+  // Has no effect while rtx.gpuResidentScene is enabled.
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_AddWaterDisturbance)(
     const remixapi_WaterDisturbanceInfo* info);
 
@@ -653,6 +663,23 @@ extern "C" {
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_DrawInstance)(
     const remixapi_InstanceInfo* info);
+
+  // Adds an instance that stays in the scene until 'SceneInstanceRemove' removes it,
+  // so it does not have to be drawn with 'DrawInstance' every frame.
+  // Requires rtx.gpuResidentScene, see documentation/GpuResidentScene.md.
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_SceneInstanceAdd)(
+    const remixapi_InstanceInfo*  info,
+    remixapi_SceneInstanceHandle* out_handle);
+
+  // Replaces the info of an instance added by 'SceneInstanceAdd'.
+  // Requires rtx.gpuResidentScene, see documentation/GpuResidentScene.md.
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_SceneInstanceUpdate)(
+    remixapi_SceneInstanceHandle  handle,
+    const remixapi_InstanceInfo*  info);
+
+  // Requires rtx.gpuResidentScene, see documentation/GpuResidentScene.md.
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_SceneInstanceRemove)(
+    remixapi_SceneInstanceHandle  handle);
 
 
   typedef struct remixapi_LightInfoLightShaping {
@@ -896,6 +923,10 @@ extern "C" {
 
     PFN_remixapi_SetWaterSim             SetWaterSim;
     PFN_remixapi_AddWaterDisturbance     AddWaterDisturbance;
+    PFN_remixapi_SceneInstanceAdd    SceneInstanceAdd;
+    PFN_remixapi_SceneInstanceUpdate SceneInstanceUpdate;
+    PFN_remixapi_SceneInstanceRemove SceneInstanceRemove;
+    PFN_remixapi_UpdateMaterial      UpdateMaterial;
   } remixapi_Interface;
 
   // NOTE: Zero-initialize out_result before the call. A runtime older than this header writes

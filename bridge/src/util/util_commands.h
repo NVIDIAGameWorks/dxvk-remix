@@ -54,6 +54,10 @@ namespace Commands {
     RemixApi_GetInitializationStatus,
     RemixApi_SetWaterSim,
     RemixApi_AddWaterDisturbance,
+    RemixApi_UpdateMaterial,
+    RemixApi_SceneInstanceAdd,
+    RemixApi_SceneInstanceUpdate,
+    RemixApi_SceneInstanceRemove,
 
     Bridge_SharedHeap_AddSeg,
     Bridge_SharedHeap_Alloc,
@@ -496,6 +500,10 @@ namespace Commands {
     case RemixApi_GetInitializationStatus: return "RemixApi_GetInitializationStatus";
     case RemixApi_SetWaterSim: return "RemixApi_SetWaterSim";
     case RemixApi_AddWaterDisturbance: return "RemixApi_AddWaterDisturbance";
+    case RemixApi_UpdateMaterial: return "RemixApi_UpdateMaterial";
+    case RemixApi_SceneInstanceAdd: return "RemixApi_SceneInstanceAdd";
+    case RemixApi_SceneInstanceUpdate: return "RemixApi_SceneInstanceUpdate";
+    case RemixApi_SceneInstanceRemove: return "RemixApi_SceneInstanceRemove";
 
     case Bridge_SharedHeap_AddSeg: return "SharedHeap_AddSeg";
     case Bridge_SharedHeap_Alloc: return "SharedHeap_Alloc";

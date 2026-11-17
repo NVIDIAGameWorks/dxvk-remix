@@ -487,6 +487,17 @@ namespace dxvk {
       Logger::err("DxvkDevice: waitForIdle: Operation failed");
     this->unlockSubmission();
   }
+
+
+  // NV-DXVK start: Wait for idle and for released command-list references
+  void DxvkDevice::waitForIdleAndReleaseResources() {
+    waitForIdle();
+    // finishCmdLists recycles a command list before it decrements the pending count.
+    m_submissionQueue.synchronizeUntil([this] {
+      return m_submissionQueue.pendingSubmissions() == 0;
+    });
+  }
+  // NV-DXVK end
   
   
   DxvkDevicePerfHints DxvkDevice::getPerfHints() {

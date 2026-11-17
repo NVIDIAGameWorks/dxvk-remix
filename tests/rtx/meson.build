@@ -22,6 +22,10 @@ if dxvk_is_ninja
     'apics/RemixAPI_MediumTest'   : RemixAPI_MediumTest_exepath,
     'apics/RemixAPI_SkinningTest' : RemixAPI_SkinningTest_exepath,
     'apics/RemixAPI_WaterTest'    : RemixAPI_WaterTest_exepath,
+    'apics/RemixAPI_GpuResidentScene' : RemixAPI_GpuResidentScene_exepath,
+    'apics/RemixAPI_GpuResidentSceneMedium' : RemixAPI_GpuResidentSceneMedium_exepath,
+    'apics/RemixAPI_GpuResidentSceneTextures' : RemixAPI_GpuResidentSceneTextures_exepath,
+    'apics/RemixAPI_GpuResidentSceneLifecycle' : RemixAPI_GpuResidentSceneLifecycle_exepath,
     'apics/HydraTestRender'       : HydraTestRender_exepath
   }
 endif

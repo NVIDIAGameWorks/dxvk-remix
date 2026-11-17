@@ -36,6 +36,7 @@
 #include "../util/util_hashtable.h"
 
 #include "rtx_globals.h"
+#include "rtx_gpu_resident_scene.h"
 #include "rtx_retained_buffer_table.h"
 #include "rtx_types.h"
 #include "rtx_common_object.h"
@@ -124,6 +125,21 @@ struct ExternalDrawState {
 // BLAS entries in raytracing terminology.
 class SceneManager : public CommonDeviceObject, public ResourceCache {
 public:
+  RTX_OPTION("rtx", bool, gpuResidentScene, false,
+             "Experimental. Keeps Remix API materials, meshes and instances resident on the GPU and uploads only what changed each frame.\n"
+             "D3D9 geometry is not ray traced while it is enabled, so it is meant for applications that render only through the Remix API.\n"
+             "Requires an application restart to change. See documentation/GpuResidentScene.md.");
+  RTX_OPTION_ARGS("rtx", uint32_t, gpuResidentSceneMaxSurfaceCount, 65535,
+                  "Number of instance surface slots that the GPU-resident scene allocates up front. Each instance takes one slot for every surface of its mesh.\n"
+                  "Each slot takes roughly 460 bytes of GPU memory and about twice that in system memory, whether it is used or not.\n"
+                  "Requires an application restart to change. See documentation/GpuResidentScene.md.",
+                  args.minValue = 1, args.maxValue = 2097151);
+  RTX_OPTION_ARGS("rtx", uint32_t, gpuResidentSceneMaxMaterialCount, 65535,
+                  "Number of material slots that the GPU-resident scene allocates up front.\n"
+                  "Each slot takes 128 bytes of GPU memory and more than that in system memory, whether it is used or not.\n"
+                  "Requires an application restart to change. See documentation/GpuResidentScene.md.",
+                  args.minValue = 1, args.maxValue = 2097151);
+
   SceneManager(SceneManager const&) = delete;
   SceneManager& operator=(SceneManager const&) = delete;
 
@@ -134,6 +150,16 @@ public:
   void logStatistics();
 
   void onDestroy();
+
+  // Returns nullptr unless rtx.gpuResidentScene was enabled when the scene manager was created.
+  GpuResidentScene* tryGpuResidentScene() { return m_gpuResidentScene.get(); }
+
+  // Remix API geometry and materials of the GPU-resident scene live outside the per-frame caches.
+  bool prepareRemixApiGeometry(DxvkContext* ctx, RasterGeometry&& input, RaytraceGeometry& output);
+  void releaseRemixApiGeometry(RaytraceGeometry& geometry);
+  RtSurfaceMaterial createRemixApiSurfaceMaterial(const MaterialData& material,
+                                                  uint32_t subsurfaceMaterialIndex,
+                                                  std::optional<RtSubsurfaceMaterial>& subsurfaceMaterial);
 
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
   void submitExternalDraw(const Rc<DxvkContext>& ctx, std::unique_ptr<ExternalDrawState> state);
@@ -154,15 +180,17 @@ public:
 
   RtxGlobals& getGlobals() { return m_globals; }
 
-  Rc<DxvkBuffer> getSurfaceMaterialBuffer() { return m_surfaceMaterialBuffer; }
-  Rc<DxvkBuffer> getSurfaceMaterialExtensionBuffer() { return m_surfaceMaterialExtensionBuffer; }
-  Rc<DxvkBuffer> getVolumeMaterialBuffer() { return m_volumeMaterialBuffer; }
-  Rc<DxvkBuffer> getSurfaceBuffer() const { return m_accelManager.getSurfaceBuffer(); }
-  Rc<DxvkBuffer> getSurfaceMappingBuffer() const { return m_accelManager.getSurfaceMappingBuffer(); }
-  Rc<DxvkBuffer> getCurrentFramePrimitiveIDPrefixSumBuffer() const { return m_accelManager.getCurrentFramePrimitiveIDPrefixSumBuffer(); }
-  Rc<DxvkBuffer> getLastFramePrimitiveIDPrefixSumBuffer() const { return m_accelManager.getLastFramePrimitiveIDPrefixSumBuffer(); }
-  Rc<DxvkBuffer> getBillboardsBuffer() const { return m_accelManager.getBillboardsBuffer(); }
-  bool isPreviousFrameSceneAvailable() const { return m_previousFrameSceneAvailable && getSurfaceMappingBuffer().ptr() != nullptr; }
+  Rc<DxvkBuffer> getSurfaceMaterialBuffer() const;
+  Rc<DxvkBuffer> getSurfaceMaterialExtensionBuffer() const;
+  Rc<DxvkBuffer> getVolumeMaterialBuffer() const;
+  Rc<DxvkBuffer> getSurfaceBuffer() const;
+  Rc<DxvkBuffer> getSurfaceMappingBuffer() const;
+  Rc<DxvkBuffer> getCurrentFramePrimitiveIDPrefixSumBuffer() const;
+  Rc<DxvkBuffer> getLastFramePrimitiveIDPrefixSumBuffer() const;
+  Rc<DxvkBuffer> getBillboardsBuffer() const;
+  uint32_t getSurfaceCount() const;
+  bool hasRenderableScene() const;
+  bool isPreviousFrameSceneAvailable() const;
 
   const std::vector<Rc<DxvkSampler>>& getSamplerTable() const { return m_samplerCache.getObjectTable(); }
   const std::vector<RaytraceBuffer>& getBufferTable() const { return m_bufferCache.getObjectTable(); }
@@ -201,12 +229,12 @@ public:
   FogState& getFogState() { return m_fog; }
   const fast_unordered_cache<FogState>& getFogStates() const { return m_fogStates; }
 
-  uint32_t getStartInMediumMaterialIndex() { return m_startInMediumMaterialIndex; }
+  uint32_t getStartInMediumMaterialIndex() const;
   // Returns the index into the surface materials of the water that sludge opens into, see RtxWaterSim::Sludge.
   // Returns SURFACE_INDEX_INVALID while sludge is off.
   uint32_t getSludgeWaterMaterialIndex() const { return m_sludgeWaterMaterialIndex; }
   
-  uint32_t getActivePOMCount() {return m_activePOMCount;}
+  uint32_t getActivePOMCount() const;
 
   float getTotalMipBias();
   float getCalculatedUpscalingMipBias();
@@ -218,6 +246,8 @@ public:
   // global needs clearing.
   void invalidateChangedReplacements(const AssetChanges& changes);
   void garbageCollection();
+  // Creates the GPU-resident scene's dirty materials, which must happen before the frame's texture upload.
+  void prepareSceneResources();
   void prepareSceneData(Rc<RtxContext> ctx, class DxvkBarrierSet& execBarriers);
 
   void onFrameEnd(Rc<DxvkContext> ctx, bool raytracedThisFrame);
@@ -260,8 +290,8 @@ public:
   void requestVramCompaction();
   void manageTextureVram();
 
-  bool isThinOpaqueMaterialExist() const { return m_thinOpaqueCount > 0; }
-  bool isSssMaterialExist() const { return m_sssCount > 0; }
+  bool isThinOpaqueMaterialExist() const;
+  bool isSssMaterialExist() const;
 
   bool isAntiCullingSupported() const { return m_isAntiCullingSupported; }
 
@@ -285,9 +315,17 @@ private:
                                    RtInstance* existingInstance = nullptr,
                                    const RtxParticleSystemDesc* pParticleSystemDesc = nullptr);
 
-  const RtSurfaceMaterial& createSurfaceMaterial(const MaterialData& renderMaterialData,
-                                                 const DrawCallState& drawCallState,
-                                                 uint32_t* out_indexInCache = nullptr);
+  // With cacheResult false, the material bypasses the per-frame surface material cache.
+  // A non-null pOutSubsurfaceMaterial receives the subsurface material instead of the extension cache,
+  // and the returned material refers to it through subsurfaceMaterialIndexOverride.
+  // With hasTexcoordsOverride, textures are tracked even when the draw call has no texture coordinates.
+  RtSurfaceMaterial createSurfaceMaterial(const MaterialData& renderMaterialData,
+                                          const DrawCallState& drawCallState,
+                                          uint32_t* out_indexInCache = nullptr,
+                                          bool cacheResult = true,
+                                          bool hasTexcoordsOverride = false,
+                                          uint32_t subsurfaceMaterialIndexOverride = SURFACE_INDEX_INVALID,
+                                          std::optional<RtSubsurfaceMaterial>* pOutSubsurfaceMaterial = nullptr);
 
   // Retain / release all resources associated with the surface material at the given cache index:
   // texture ref counts (via RtxTextureManager) and scene-wide feature counts (POM, SSS, thin-opaque).
@@ -395,6 +433,8 @@ private:
   std::unique_ptr<AssetReplacer> m_pReplacer;
 
   std::unique_ptr<TerrainBaker> m_terrainBaker;
+
+  std::unique_ptr<GpuResidentScene> m_gpuResidentScene;
 
   FogState m_fog;
   fast_unordered_cache<FogState> m_fogStates;

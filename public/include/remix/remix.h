@@ -180,13 +180,24 @@ namespace remix {
     Result< void >                    Present(const remixapi_PresentInfo* info = nullptr);
     Result< remixapi_MaterialHandle > CreateMaterial(const remixapi_MaterialInfo& info);
     Result< void >                    DestroyMaterial(remixapi_MaterialHandle handle);
+    // Requires rtx.gpuResidentScene.
+    Result< void >                    UpdateMaterial(remixapi_MaterialHandle handle, const remixapi_MaterialInfo& info);
     Result< remixapi_MeshHandle >     CreateMesh(const remixapi_MeshInfo& info);
     Result< void >                    DestroyMesh(remixapi_MeshHandle handle);
     Result< void >                    SetupCamera(const remixapi_CameraInfo& info);
     Result< void >                    SetCameraMediumMaterial(remixapi_MaterialHandle medium);
+
+    // SetWaterSim and AddWaterDisturbance have no effect while rtx.gpuResidentScene is enabled.
     Result< void >                    SetWaterSim(const remixapi_WaterSimInfo& info);
     Result< void >                    AddWaterDisturbance(const remixapi_WaterDisturbanceInfo& info);
+
     Result< void >                    DrawInstance(const remixapi_InstanceInfo& info);
+
+    // The SceneInstance functions require rtx.gpuResidentScene.
+    Result< remixapi_SceneInstanceHandle > SceneInstanceAdd(const remixapi_InstanceInfo& info);
+    Result< void >                    SceneInstanceUpdate(remixapi_SceneInstanceHandle handle, const remixapi_InstanceInfo& info);
+    Result< void >                    SceneInstanceRemove(remixapi_SceneInstanceHandle handle);
+
     Result< remixapi_LightHandle >    CreateLight(const remixapi_LightInfo& info);
     Result< void >                    DestroyLight(remixapi_LightHandle handle);
     Result< void >                    DrawLightInstance(remixapi_LightHandle handle);
@@ -227,7 +238,7 @@ namespace remix {
         return status;
       }
 
-      static_assert(sizeof(remixapi_Interface) == 192,
+      static_assert(sizeof(remixapi_Interface) == 224,
                     "Change version, update C++ wrapper when adding new functions");
 
       remix::Interface interfaceInCpp = {};
@@ -660,6 +671,13 @@ namespace remix {
     return m_CInterface.DestroyMaterial(handle);
   }
 
+  inline Result< void > Interface::UpdateMaterial(remixapi_MaterialHandle handle, const remixapi_MaterialInfo& info) {
+    if (!m_CInterface.UpdateMaterial) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    return m_CInterface.UpdateMaterial(handle, &info);
+  }
+
 
 
   struct MeshInfo : remixapi_MeshInfo {
@@ -917,6 +935,32 @@ namespace remix {
 
   inline Result< void > Interface::DrawInstance(const remixapi_InstanceInfo& info) {
     return m_CInterface.DrawInstance(&info);
+  }
+
+  inline Result< remixapi_SceneInstanceHandle > Interface::SceneInstanceAdd(const remixapi_InstanceInfo& info) {
+    if (!m_CInterface.SceneInstanceAdd) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    remixapi_SceneInstanceHandle handle = nullptr;
+    remixapi_ErrorCode status = m_CInterface.SceneInstanceAdd(&info, &handle);
+    if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
+      return status;
+    }
+    return handle;
+  }
+
+  inline Result< void > Interface::SceneInstanceUpdate(remixapi_SceneInstanceHandle handle, const remixapi_InstanceInfo& info) {
+    if (!m_CInterface.SceneInstanceUpdate) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    return m_CInterface.SceneInstanceUpdate(handle, &info);
+  }
+
+  inline Result< void > Interface::SceneInstanceRemove(remixapi_SceneInstanceHandle handle) {
+    if (!m_CInterface.SceneInstanceRemove) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    return m_CInterface.SceneInstanceRemove(handle);
   }
 
 

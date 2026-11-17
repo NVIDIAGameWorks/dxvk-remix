@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - remixapi_Interface.SetWaterSim, remixapi_WaterSimInfo, REMIXAPI_STRUCT_TYPE_WATER_SIM_INFO: the state of the GPU water simulation (0.6.11)
 - remixapi_Interface.AddWaterDisturbance, remixapi_WaterDisturbanceInfo, REMIXAPI_STRUCT_TYPE_WATER_DISTURBANCE_INFO: a dent in the simulated water (0.6.11)
 - REMIXAPI_INSTANCE_CATEGORY_BIT_SLUDGE: sludge floating on top of the water surface (see rtx.sludgeTextures)
+- remixapi_SceneInstanceHandle (0.6.12)
+- remixapi_Interface.SceneInstanceAdd (0.6.12)
+- remixapi_Interface.SceneInstanceUpdate (0.6.12)
+- remixapi_Interface.SceneInstanceRemove (0.6.12)
+- remixapi_Interface.UpdateMaterial (0.6.12)
+- The four functions above require `rtx.gpuResidentScene`, and return `REMIXAPI_ERROR_CODE_GENERAL_FAILURE` while it is disabled. The 32-bit bridge forwards them, and returns success before the runtime has run them, so a bridged client finds a failure only in the bridge server log. See [GpuResidentScene.md](GpuResidentScene.md).
+- `rtx.gpuResidentScene` (experimental, disabled by default). While it is enabled, `CreateMaterial` and `CreateMesh` return generated handles and ignore `hash`, `CreateMesh` rejects meshes without surfaces, and `DrawInstance` adds an instance for the current frame only.
 
 ### Changed
 - `remixapi_InitializeLibrary` writes only the part of `remixapi_Interface` that the client's version knows.
