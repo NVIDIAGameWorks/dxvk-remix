@@ -100,7 +100,16 @@ struct FinalCombineArgs
   uint finalizeWithACES;
   uint enableAutoExposure;
   uint useLegacyACES;
+  uint colorGradingEnabled;
+
+  // Color grading (rtx.tonemap.colorBalance, contrast and saturation), as in the global tonemapper.
+  vec3 colorBalance;
+  float contrast;
+
+  float saturation;
   uint pad0;
+  uint pad1;
+  uint pad2;
 };
 
 

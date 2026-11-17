@@ -43,26 +43,9 @@ float lumaAverage(float3 color)
   return dot(color, float3(1.f / 3.f));
 }
 
-float3 setSaturation(float3 color, float saturation) 
-{
-  return mix(float3(calcBt709Luminance(color)), color, saturation);
-}
-
 float3 setSaturationAverage(float3 color, float saturation) 
 {
   return mix(float3(lumaAverage(color)), color, saturation);
-}
-
-float3 colorGrading(float3 inputColor) 
-{
-  // Apply color temperature & tint
-  inputColor = inputColor * cb.colorBalance;
-  
-  // Adjust contrast & saturation
-  inputColor = saturate((cb.contrast * (inputColor - 0.18f)) + 0.18f); // 0.18 = Mid level grey
-  inputColor = setSaturation(inputColor, cb.saturation);
-  
-  return inputColor;
 }
 
 // Photographic Tone Reproduction for Digital Images
@@ -162,7 +145,7 @@ float3 applyToneMapping(float3 color, uint2 pixelPosition)
   
   if (cb.colorGradingEnabled > 0)
   {
-    color = colorGrading(color);
+    color = colorGrading(color, cb.colorBalance, cb.contrast, cb.saturation);
   }
 
   // sRGB conversion and dithering are now performed by the final output pass,
