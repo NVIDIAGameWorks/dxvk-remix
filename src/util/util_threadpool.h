@@ -443,6 +443,12 @@ namespace dxvk {
 
     // True if front pop, False if back pop
     bool executeTask(const uint32_t workerId) {
+      // Idle workers poll the queues without the lock, so polling writes no shared cache line.
+      // The check is a hint: the pop under the lock still decides, and a task pushed meanwhile is found on a later poll.
+      if (m_workerTasks[workerId]->isEmpty()) {
+        return false;
+      }
+
       TaskId taskId;
       {
         // Since we're using an SPSC queue, we must take a lock when
@@ -464,14 +470,16 @@ namespace dxvk {
     }
 
     std::unique_ptr<Task[]> m_tasks;
-    std::atomic<TaskId> m_taskId = 0;
+    // Written by the scheduling thread for every task, so kept off the cache lines the workers poll.
+    alignas(CACHE_LINE_SIZE) std::atomic<TaskId> m_taskId = 0;
     uint32_t m_taskCount;
 
     // Add the task to the queue and notify a worker thread
     //  just distribute evenly to all threads for some mask denoted by Affinity.
     size_t m_schedulerIndex = 0;
 
-    uint8_t m_numThread;
+    // Read by the workers on every poll.
+    alignas(CACHE_LINE_SIZE) uint8_t m_numThread;
 
     std::atomic<bool> m_stopWork = false;
 
@@ -480,9 +488,9 @@ namespace dxvk {
     OnAddCondition m_condOnAdd;
 
     // Used to synchronize intra-thread stealing
-    sync::Spinlock m_threadMutex;
+    alignas(CACHE_LINE_SIZE) sync::Spinlock m_threadMutex;
 
-    std::vector<std::thread> m_workerThreads;
+    alignas(CACHE_LINE_SIZE) std::vector<std::thread> m_workerThreads;
 
     // We expect high volume of potentially small tasks via "Schedule" per-
     //  frame, and require extremely low overhead to hit the 100's of FPS.
@@ -490,6 +498,7 @@ namespace dxvk {
     //  1. Non-circular queue incurs allocation overhead thats unacceptable
     //  2. Use of mutex, and CVs, incur overhead thats unacceptable
     std::vector<QueuePtr> m_workerTasks;
-    std::atomic_uint32_t m_numTasks;
+    // Written for every task by the scheduling thread and the workers.
+    alignas(CACHE_LINE_SIZE) std::atomic_uint32_t m_numTasks;
   };
 } //dxvk

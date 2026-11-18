@@ -32,9 +32,7 @@ template<bool EnableSync>
 class Direct3DDevice9Ex_LSS: public BaseDirect3DDevice9Ex_LSS {
 
 #ifdef WITH_MULTITHREADED_DEVICE
-  // Using a std::recursive_mutex at the moment. On a 3GHz Threadripper system measured
-  // ~22ns for lock/unlock sequence with no contention.
-  typedef std::conditional_t<EnableSync, std::recursive_mutex, bridge_util::nop_sync> LockType;
+  typedef std::conditional_t<EnableSync, bridge_util::LightMutex, bridge_util::nop_sync> LockType;
 
   // TODO: The lock is global because currently the bridge and the transport queues
   // are NOT thread-safe.This mutex can be made device-local or completely removed

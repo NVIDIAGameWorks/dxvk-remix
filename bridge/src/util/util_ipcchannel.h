@@ -25,6 +25,7 @@
 
 #include "util_atomiccircularqueue.h"
 #include "util_circularbuffer.h"
+#include "util_scopedlock.h"
 #include "util_semaphore.h"
 #include "util_sharedmemory.h"
 
@@ -116,7 +117,7 @@ public:
   std::atomic<bool>* const           pbCmdInProgress;
   const HANDLE                       hCmdDataAvailable;
   const HANDLE                       hCmdSpaceAvailable;
-  mutable std::mutex                 m_mutex;
+  mutable bridge_util::LightMutex    m_mutex;
 
   // Extra storage needed for data queue synchronization params
   static constexpr size_t kReservedSpace = align<size_t>(sizeof(*serverDataPos) + sizeof(*clientDataExpectedPos), 64);

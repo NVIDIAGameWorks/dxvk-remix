@@ -25,6 +25,11 @@
 #include "util_common.h"
 
 #include <assert.h>
+#include <atomic>
+#include <windows.h>
+
+// WaitOnAddress, WakeByAddressSingle
+#pragma comment(lib, "Synchronization.lib")
 
 namespace bridge_util {
 
@@ -96,6 +101,56 @@ namespace bridge_util {
     }
     inline void unlock() {
     }
+  };
+
+  /*
+   * Recursive mutex for short sections that are rarely contended.
+   * Locking and unlocking are one atomic operation each when no other thread waits.
+   * std::mutex and std::recursive_mutex add SRW lock bookkeeping to every call.
+   * A waiting thread sleeps in WaitOnAddress.
+   */
+  class LightMutex {
+  public:
+    void lock() {
+      const DWORD threadId = GetCurrentThreadId();
+      if (m_owner.load(std::memory_order_relaxed) == threadId) {
+        m_count++;
+        return;
+      }
+      uint32_t state = kFree;
+      if (!m_state.compare_exchange_strong(state, kLocked, std::memory_order_acquire)) {
+        // A thread that waited takes the lock as contended, so its unlock wakes the next waiter.
+        while (m_state.exchange(kContended, std::memory_order_acquire) != kFree) {
+          state = kContended;
+          WaitOnAddress(&m_state, &state, sizeof(state), INFINITE);
+        }
+      }
+      m_owner.store(threadId, std::memory_order_relaxed);
+      m_count = 1;
+    }
+
+    void unlock() {
+      if (--m_count > 0) {
+        return;
+      }
+      m_owner.store(0, std::memory_order_relaxed);
+      if (m_state.exchange(kFree, std::memory_order_release) == kContended) {
+        WakeByAddressSingle(&m_state);
+      }
+    }
+
+  private:
+    static constexpr uint32_t kFree = 0;
+    static constexpr uint32_t kLocked = 1;
+    // Locked, and other threads may sleep on it.
+    static constexpr uint32_t kContended = 2;
+
+    std::atomic<uint32_t> m_state { kFree };
+    // Only the owner writes its own id, and clears it before unlocking.
+    // So a thread reads its own id here only while it owns the mutex.
+    std::atomic<DWORD> m_owner { 0 };
+    // Only the owner uses it.
+    uint32_t m_count = 0;
   };
 
 #define SCOPED_LOCK(pObj, DirectLock) \
