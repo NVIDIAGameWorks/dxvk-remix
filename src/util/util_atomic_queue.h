@@ -24,6 +24,7 @@
 #include <atomic>
 #include <cstring>
 #include <utility>
+#include "util_math.h"
 
 namespace dxvk {
   /**
@@ -44,6 +45,10 @@ namespace dxvk {
 
     bool isFull() const {
       return ((m_tail + 1) % Capacity) == m_head;
+    }
+
+    bool isEmpty() const {
+      return m_head.load() == m_tail.load();
     }
 
     bool push(T&& item) {
@@ -73,6 +78,8 @@ namespace dxvk {
   private:
     std::array<T, Capacity> m_data;
     std::atomic<uint32_t> m_head;
+    // Puts the consumer's head and the producer's tail on separate cache lines.
+    uint8_t m_headTailPadding[CACHE_LINE_SIZE];
     std::atomic<uint32_t> m_tail;
   };
 } //dxvk

@@ -1229,9 +1229,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetTransform(D3DTRANSFORMSTATETYPE St
       } else {
         m_state.transforms[idx] = *pMatrix;
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetTransform, [&](SentState& s) { return s.transform(State, *pMatrix); })) {
         return S_OK;
       }
@@ -1333,9 +1330,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetViewport(CONST D3DVIEWPORT9* pView
       } else {
         m_state.viewport = *pViewport;
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetViewport, [&](SentState& s) { return s.viewport(*pViewport); })) {
         return S_OK;
       }
@@ -1382,9 +1376,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetMaterial(CONST D3DMATERIAL9* pMate
       } else {
         m_state.material = *pMaterial;
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetMaterial, [&](SentState& s) { return s.material(*pMaterial); })) {
         return S_OK;
       }
@@ -1570,9 +1561,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetRenderState(D3DRENDERSTATETYPE Sta
       } else {
         m_state.renderStates[State] = Value;
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetRenderState, [&](SentState& s) { return s.renderState(State, Value); })) {
         return S_OK;
       }
@@ -1977,6 +1965,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetTexture(DWORD Stage, IDirect3DBase
 
   D3DRESOURCETYPE type = D3DRTYPE_FORCE_DWORD;
 
+  UID currentUID = 0;
   {
     BRIDGE_DEVICE_LOCKGUARD();
     if (pTexture != nullptr) {
@@ -2016,10 +2005,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetTexture(DWORD Stage, IDirect3DBase
       m_state.textures[idx] = std::move(objectRef);
       m_state.textureTypes[idx] = type;
     }
-  }
-  UID currentUID = 0;
-  {
-    BRIDGE_DEVICE_LOCKGUARD();
     if (!mustSend(Commands::IDirect3DDevice9Ex_SetTexture,
                   [&](SentState& s) { return s.texture(Stage, (uint32_t) pD3DObject); })) {
       return S_OK;
@@ -2120,9 +2105,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetTextureStageState(DWORD Stage, D3D
       } else {
         m_state.textureStageStates[stageIdx][typeIdx] = Value;
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetTextureStageState,
                     [&](SentState& s) { return s.textureStageState(Stage, (uint32_t) Type, Value); })) {
         return S_OK;
@@ -2176,9 +2158,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetSamplerState(DWORD Sampler, D3DSAM
       } else {
         m_state.samplerStates[samplerIdx][typeIdx] = Value;
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetSamplerState,
                     [&](SentState& s) { return s.samplerState(Sampler, (uint32_t) Type, Value); })) {
         return S_OK;
@@ -2285,9 +2264,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetScissorRect(CONST RECT* pRect) {
       } else {
         m_state.scissorRect = *pRect;
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetScissorRect, [&](SentState& s) { return s.scissor(*pRect); })) {
         return S_OK;
       }
@@ -2527,9 +2503,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexDeclaration(IDirect3DVertexD
     {
       BRIDGE_DEVICE_LOCKGUARD();
       m_state.vertexDecl = MakeD3DAutoPtr(pLssVtxDecl);
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexDeclaration,
                     [&](SentState& s) { return s.vertexDeclaration((uint32_t) id); })) {
         return S_OK;
@@ -2571,9 +2544,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetFVF(DWORD FVF) {
     {
       BRIDGE_DEVICE_LOCKGUARD();
       m_FVF = FVF;
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetFVF, [&](SentState& s) { return s.fvf(FVF); })) {
         return S_OK;
       }
@@ -2656,9 +2626,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShader(IDirect3DVertexShader
       } else {
         m_state.vertexShader = MakeD3DAutoPtr(pLssVertexShader);
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexShader, [&](SentState& s) { return s.vertexShader(id); })) {
         return S_OK;
       }
@@ -2703,6 +2670,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantF(UINT StartRe
   }
 
   HRESULT hresult = D3DERR_INVALIDCALL;
+  UID currentUID = 0;
   {
     BRIDGE_DEVICE_LOCKGUARD();
     hresult =
@@ -2712,14 +2680,13 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantF(UINT StartRe
         StartRegister,
         pConstantData,
         Vector4fCount);
-  }
-  if (SUCCEEDED(hresult)) {
+    if (FAILED(hresult)) {
+      return hresult;
+    }
     uint32_t start = StartRegister;
     uint32_t count = Vector4fCount;
     const float* pData = pConstantData;
-    UID currentUID = 0;
     {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexShaderConstantF,
                     [&](SentState& s) { return s.vsConstantsF(start, pData, count); })) {
         return hresult;
@@ -2730,9 +2697,8 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantF(UINT StartRe
                      count,
                      count * 4 * sizeof(float), currentUID);
     }
-    WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantF()", D3DERR_INVALIDCALL, currentUID);
   }
-  return hresult;
+  WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantF()", D3DERR_INVALIDCALL, currentUID);
 }
 
 template<bool EnableSync>
@@ -2767,6 +2733,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantI(UINT StartRe
   }
 
   HRESULT hresult = D3DERR_INVALIDCALL;
+  UID currentUID = 0;
   {
     BRIDGE_DEVICE_LOCKGUARD();
     hresult = setShaderConstants<
@@ -2775,14 +2742,13 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantI(UINT StartRe
         StartRegister,
         pConstantData,
         Vector4iCount);
-  }
-  if (SUCCEEDED(hresult)) {
+    if (FAILED(hresult)) {
+      return hresult;
+    }
     uint32_t start = StartRegister;
     uint32_t count = Vector4iCount;
     const int* pData = pConstantData;
-    UID currentUID = 0;
     {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexShaderConstantI,
                     [&](SentState& s) { return s.vsConstantsI(start, pData, count); })) {
         return hresult;
@@ -2793,9 +2759,8 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantI(UINT StartRe
                      count,
                      count * 4 * sizeof(UINT), currentUID);
     }
-    WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantI()", D3DERR_INVALIDCALL, currentUID);
   }
-  return hresult;
+  WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantI()", D3DERR_INVALIDCALL, currentUID);
 }
 
 template<bool EnableSync>
@@ -2831,6 +2796,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantB(UINT StartRe
   }
 
   HRESULT hresult = D3DERR_INVALIDCALL;
+  UID currentUID = 0;
   {
     BRIDGE_DEVICE_LOCKGUARD();
     hresult = setShaderConstants<
@@ -2839,15 +2805,13 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantB(UINT StartRe
         StartRegister,
         pConstantData,
         BoolCount);
-  }
-
-  if (SUCCEEDED(hresult)) {
+    if (FAILED(hresult)) {
+      return hresult;
+    }
     uint32_t start = StartRegister;
     uint32_t count = BoolCount;
     const BOOL* pData = pConstantData;
-    UID currentUID = 0;
     {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexShaderConstantB,
                     [&](SentState& s) { return s.vsConstantsB(start, pData, count); })) {
         return hresult;
@@ -2858,9 +2822,8 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantB(UINT StartRe
                      count,
                      count * sizeof(BOOL), currentUID);
     }
-    WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantB()", D3DERR_INVALIDCALL, currentUID);
   }
-  return hresult;
+  WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantB()", D3DERR_INVALIDCALL, currentUID);
 }
 
 template<bool EnableSync>
@@ -2910,9 +2873,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetStreamSource(UINT StreamNumber, ID
           m_state.streamStrides[StreamNumber] = Stride;
         }
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetStreamSource,
                     [&](SentState& s) { return s.streamSource(StreamNumber, (uint32_t) id, OffsetInBytes, Stride); })) {
         return S_OK;
@@ -2961,9 +2921,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetStreamSourceFreq(UINT StreamNumber
       } else {
         m_state.streamFreqs[StreamNumber] = Divider;
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetStreamSourceFreq,
                     [&](SentState& s) { return s.streamSourceFreq(StreamNumber, Divider); })) {
         return S_OK;
@@ -3006,9 +2963,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetIndices(IDirect3DIndexBuffer9* pIn
       } else {
         m_state.indices = MakeD3DAutoPtr(pLssIndexData);
       }
-    }
-    {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetIndices, [&](SentState& s) { return s.indices((uint32_t) id); })) {
         return S_OK;
       }
@@ -3087,6 +3041,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShader(IDirect3DPixelShader9*
   LogFunctionCall();
   Direct3DPixelShader9_LSS* pLssPixelShader = bridge_cast<Direct3DPixelShader9_LSS*>(pShader);
   const auto id = (pLssPixelShader) ? (uint32_t) pLssPixelShader->getId() : 0;
+  UID currentUID = 0;
   {
     BRIDGE_DEVICE_LOCKGUARD();
     if (m_stateRecording) {
@@ -3095,10 +3050,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShader(IDirect3DPixelShader9*
     } else {
       m_state.pixelShader = MakeD3DAutoPtr(pLssPixelShader);
     }
-  }
-  UID currentUID = 0;
-  {
-    BRIDGE_DEVICE_LOCKGUARD();
     if (!mustSend(Commands::IDirect3DDevice9Ex_SetPixelShader, [&](SentState& s) { return s.pixelShader(id); })) {
       return S_OK;
     }
@@ -3139,18 +3090,17 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantF(UINT StartReg
   }
 
   HRESULT hresult = D3DERR_INVALIDCALL;
+  UID currentUID = 0;
   {
     BRIDGE_DEVICE_LOCKGUARD();
     hresult = setShaderConstants<ShaderType::Pixel, ConstantType::Float>(StartRegister, pConstantData, Vector4fCount);
-  }
-
-  if (SUCCEEDED(hresult)) {
+    if (FAILED(hresult)) {
+      return hresult;
+    }
     uint32_t start = StartRegister;
     uint32_t count = Vector4fCount;
     const float* pData = pConstantData;
-    UID currentUID = 0;
     {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetPixelShaderConstantF,
                     [&](SentState& s) { return s.psConstantsF(start, pData, count); })) {
         return hresult;
@@ -3161,9 +3111,8 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantF(UINT StartReg
                      count,
                      count * 4 * sizeof(float), currentUID);
     }
-    WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantF()", D3DERR_INVALIDCALL, currentUID);
   }
-  return hresult;
+  WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantF()", D3DERR_INVALIDCALL, currentUID);
 }
 
 template<bool EnableSync>
@@ -3193,17 +3142,17 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantI(UINT StartReg
   }
 
   HRESULT hresult = D3DERR_INVALIDCALL;
+  UID currentUID = 0;
   {
     BRIDGE_DEVICE_LOCKGUARD();
     hresult = setShaderConstants<ShaderType::Pixel, ConstantType::Int>(StartRegister, pConstantData, Vector4iCount);
-  }
-  if (SUCCEEDED(hresult)) {
+    if (FAILED(hresult)) {
+      return hresult;
+    }
     uint32_t start = StartRegister;
     uint32_t count = Vector4iCount;
     const int* pData = pConstantData;
-    UID currentUID = 0;
     {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetPixelShaderConstantI,
                     [&](SentState& s) { return s.psConstantsI(start, pData, count); })) {
         return hresult;
@@ -3214,9 +3163,8 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantI(UINT StartReg
                      count,
                      count * 4 * sizeof(UINT), currentUID);
     }
-    WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantI()", D3DERR_INVALIDCALL, currentUID);
   }
-  return hresult;
+  WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantI()", D3DERR_INVALIDCALL, currentUID);
 }
 
 template<bool EnableSync>
@@ -3241,17 +3189,17 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantB(UINT StartReg
   }
 
   HRESULT hresult = D3DERR_INVALIDCALL;
+  UID currentUID = 0;
   {
     BRIDGE_DEVICE_LOCKGUARD();
     hresult = setShaderConstants<ShaderType::Pixel, ConstantType::Bool>(StartRegister, pConstantData, BoolCount);
-  }
-  if (SUCCEEDED(hresult)) {
+    if (FAILED(hresult)) {
+      return hresult;
+    }
     uint32_t start = StartRegister;
     uint32_t count = BoolCount;
     const BOOL* pData = pConstantData;
-    UID currentUID = 0;
     {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetPixelShaderConstantB,
                     [&](SentState& s) { return s.psConstantsB(start, pData, count); })) {
         return hresult;
@@ -3262,9 +3210,8 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantB(UINT StartReg
                      count,
                      count * sizeof(BOOL), currentUID);
     }
-    WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantB()", D3DERR_INVALIDCALL, currentUID);
   }
-  return hresult;
+  WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantB()", D3DERR_INVALIDCALL, currentUID);
 }
 
 template<bool EnableSync>
