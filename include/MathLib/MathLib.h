@@ -707,7 +707,7 @@ PLATFORM_INLINE float DoubleToGequal(double dValue)
     float fError = (float)(dValue - fValue);
 
     int32_t exponent = 0;
-    frexp(fValue, &exponent);
+    (void)frexp(fValue, &exponent);
     exponent = Max(exponent, 0);
     exponent = (int32_t)log10f(float(1 << exponent));
 
@@ -734,7 +734,7 @@ PLATFORM_INLINE float DoubleToLequal(double dValue)
     float fError = (float)(dValue - fValue);
 
     int32_t exponent = 0;
-    frexp(fValue, &exponent);
+    (void)frexp(fValue, &exponent);
     exponent = Max(exponent, 0);
     exponent = (int32_t)log10f(float(1 << exponent));
 
