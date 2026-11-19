@@ -131,7 +131,7 @@ namespace dxvk {
   {
     Rc<ManagedTexture> texture = new ManagedTexture();
 
-    texture->m_assetData = assetData;
+    texture->setAssetData(assetData);
     texture->m_colorSpace = colorSpace;
     texture->m_uniqueKey = RtxTextureManager::getUniqueKey();
     texture->m_state = ManagedTexture::State::kInitialized;
@@ -164,18 +164,24 @@ namespace dxvk {
     return desc;
   }
 
-  uint16_t clampMipCountToAvailable(const Rc<AssetData>& assetData, uint32_t targetMipCount) {
+  void ManagedTexture::setAssetData(const Rc<AssetData>& assetData) {
+    m_assetData = assetData;
+    m_assetMipLevels = assetData->info().mipLevels;
+    m_assetMininumLevelsToUpload = assetData->info().mininumLevelsToUpload;
+  }
+
+  uint16_t clampMipCountToAvailable(const ManagedTexture& tex, uint32_t targetMipCount) {
     if (targetMipCount == 0) {
       return 0;
     }
 
-    assert(assetData.ptr());
-    assert(assetData->info().mininumLevelsToUpload > 0);
-    assert(assetData->info().mipLevels > 0);
-    assert(assetData->info().mininumLevelsToUpload <= assetData->info().mipLevels);
+    assert(tex.m_assetData.ptr());
+    assert(tex.m_assetMininumLevelsToUpload > 0);
+    assert(tex.m_assetMipLevels > 0);
+    assert(tex.m_assetMininumLevelsToUpload <= tex.m_assetMipLevels);
 
-    const uint32_t maxMips = assetData->info().mipLevels;
-    const uint32_t minMips = std::clamp(assetData->info().mininumLevelsToUpload, 1u, maxMips);
+    const uint32_t maxMips = tex.m_assetMipLevels;
+    const uint32_t minMips = std::clamp(tex.m_assetMininumLevelsToUpload, 1u, maxMips);
 
     return std::clamp(targetMipCount, minMips, maxMips);
   }
@@ -184,8 +190,8 @@ namespace dxvk {
     assert(m_currentMip_begin <= m_currentMip_end);
     const uint32_t uploaded = m_currentMip_end - m_currentMip_begin;
 
-    return exact ? (clampMipCountToAvailable(m_assetData, uploaded) == clampMipCountToAvailable(m_assetData, requiredMips))
-                 : (clampMipCountToAvailable(m_assetData, uploaded) >= clampMipCountToAvailable(m_assetData, requiredMips));
+    return exact ? (clampMipCountToAvailable(*this, uploaded) == clampMipCountToAvailable(*this, requiredMips))
+                 : (clampMipCountToAvailable(*this, uploaded) >= clampMipCountToAvailable(*this, requiredMips));
   }
 
   void ManagedTexture::requestMips(uint32_t requiredMips) {
@@ -200,7 +206,7 @@ namespace dxvk {
   }
 
   std::pair<uint16_t, uint16_t> ManagedTexture::calcRequiredMips_BeginEnd() const {
-    const uint32_t mipCountToLoad = clampMipCountToAvailable(m_assetData, uint32_t(m_requestedMips));
+    const uint32_t mipCountToLoad = clampMipCountToAvailable(*this, uint32_t(m_requestedMips));
 
     const uint32_t mip_end = m_assetData->info().mipLevels;
     const uint16_t mip_begin = uint16_t(mip_end - mipCountToLoad);
