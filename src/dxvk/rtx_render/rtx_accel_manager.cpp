@@ -157,7 +157,7 @@ namespace dxvk {
     return uint32_t(std::max(g_blasCount, 0));
   }
 
-  bool AccelManager::BlasBucket::tryAddInstance(RtInstance* instance) {
+  bool AccelManager::BlasBucket::tryAddInstance(RtInstance* instance, VkDeviceAddress transformDeviceAddress) {
     const uint8_t geometryInstanceMask = instance->getVkInstance().mask;
     const uint32_t geometryCustomIndexFlags = instance->getVkInstance().instanceCustomIndex & ~uint32_t(CUSTOM_INDEX_SURFACE_MASK);
     const bool geometryUsesUnorderedApproximations = instance->usesUnorderedApproximations();
@@ -187,7 +187,12 @@ namespace dxvk {
 
     BlasEntry* blasEntry = instance->getBlas();
 
+    // The BlasEntry's own geometries stay in object space: a dynamic BLAS of the same mesh is built from them.
+    const size_t firstGeometry = geometries.size();
     geometries.insert(geometries.end(), blasEntry->buildGeometries.begin(), blasEntry->buildGeometries.end());
+    for (size_t i = firstGeometry; i < geometries.size(); ++i) {
+      geometries[i].geometry.triangles.transformData.deviceAddress = transformDeviceAddress;
+    }
     ranges.insert(ranges.end(), blasEntry->buildRanges.begin(), blasEntry->buildRanges.end());
 
     for (auto& range : blasEntry->buildRanges) {
@@ -769,10 +774,6 @@ namespace dxvk {
         VkDeviceAddress transformDeviceAddress = m_transformBuffer->getDeviceAddress() + instanceTransforms.size() * sizeof(VkTransformMatrixKHR);
         instanceTransforms.push_back(instance->getVkInstance().transform);
 
-        for (auto& geometry : blasEntry->buildGeometries) {
-          geometry.geometry.triangles.transformData.deviceAddress = transformDeviceAddress;
-        }
-
         // Try to merge the instance into a compatible bucket using O(1) hash lookup
         BlasBucketKey bucketKey = {};
         bucketKey.instanceMask = instance->getVkInstance().mask;
@@ -785,13 +786,13 @@ namespace dxvk {
         bool merged = false;
         auto bucketIt = bucketMap.find(bucketKey);
         if (bucketIt != bucketMap.end()) {
-          merged = bucketIt->second->tryAddInstance(instance);
+          merged = bucketIt->second->tryAddInstance(instance, transformDeviceAddress);
         }
 
         // The instance couldn't be merged into any bucket - make a new one
         if (!merged) {
           auto newBucket = std::make_unique<BlasBucket>();
-          merged = newBucket->tryAddInstance(instance);
+          merged = newBucket->tryAddInstance(instance, transformDeviceAddress);
           assert(merged);
 
           bucketMap[bucketKey] = newBucket.get();
