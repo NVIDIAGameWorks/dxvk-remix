@@ -22,6 +22,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstring>
 #include <unordered_map>
 #include <unordered_set>
 #include <cassert>
@@ -42,6 +43,7 @@
 #include "../util/util_env.h"
 #include "../util/util_keybind.h"
 #include "../util/util_hash_set_layer.h"
+#include "../util/util_lock_free_single_writer_value.h"
 #include "rtx_utils.h"
 #include "rtx_option_layer.h"
 
@@ -286,7 +288,9 @@ namespace dxvk {
     const char* m_description; // Description string for the option that will get included in documentation
     OptionType m_type;
     GenericValue m_resolvedValue;
-    // Atomic: getValue() ORs in RTX_OPTION_INVALIDATION_SCOPE flags from any thread under
+    // Copy of a trivially copyable resolved value, which getters read without the update mutex.
+    LockFreeSingleWriterValue m_publishedValue;
+    // Atomic: getValue() ORs in RTX_OPTION_INVALIDATION_SCOPE flags from any thread, with or without
     // getUpdateMutex, while getFlags() is read lock-free elsewhere (e.g. RtxOptionManager::applyPendingValues).
     mutable std::atomic<uint32_t> m_flags{ 0 };
     std::function<void(DxvkDevice* device)> m_onChangeCallback;
@@ -322,6 +326,10 @@ namespace dxvk {
 
     // Returns true if the value was changed
     bool clampValue(GenericValue& value);
+
+    // Publishes the resolved value of a trivially copyable type.
+    // Caller holds the update mutex, or runs in static initialization.
+    void publishResolvedValue();
   };
 
   template <typename T>
@@ -357,11 +365,14 @@ namespace dxvk {
       return RtxOption<T>(category, name, value, description, args);
     }
 
-    const T& operator()() const {
+    // Trivially copyable values are returned by copy: getters read them without the mutex.
+    using ValueType = std::conditional_t<std::is_trivially_copyable_v<T>, T, const T&>;
+
+    ValueType operator()() const {
       return getValue();
     }
 
-    const T& get() const {
+    ValueType get() const {
       return getValue();
     }
     
@@ -613,6 +624,7 @@ namespace dxvk {
       if (allocateMemory(category, name, description, args)) {
         m_resolvedValue.value = 0;
         *reinterpret_cast<BasicType*>(&m_resolvedValue.value) = value;
+        publishResolvedValue();
         // Push default value to option layer priority queue
         const RtxOptionLayer* defaultLayer = RtxOptionLayer::getDefaultLayer();
         if (defaultLayer) {
@@ -654,6 +666,7 @@ namespace dxvk {
       : RtxOptionImpl(0, name, category, getOptionType(), description) {  // hash filled in by allocateMemory
       if (allocateMemory(category, name, description, args)) {
         m_resolvedValue.pointer = new ClassType(value);
+        publishResolvedValue();
         // Push default value to option layer priority queue
         const RtxOptionLayer* defaultLayer = RtxOptionLayer::getDefaultLayer();
         if (defaultLayer) {
@@ -664,10 +677,15 @@ namespace dxvk {
       }
     }
 
-    const T& getValue() const {
-      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+    ValueType getValue() const {
       assert(RtxOptionImpl::isInitialized() && "Trying to access an RtxOption before the config files have been loaded.");
       tagInvalidationScope();
+      // Trivially copyable values are copied from their published value, without the mutex.
+      // Other types keep the mutex.
+      if constexpr (std::is_trivially_copyable_v<T> && !RTX_OPTION_DEBUG_LOGGING) {
+        return m_publishedValue.read<T>();
+      }
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
 #if RTX_OPTION_DEBUG_LOGGING
       // Print out a warning whenever a dirty value is accessed.
       if (isDirty()) {

@@ -1471,7 +1471,7 @@ namespace dxvk {
     }
 
     static bool shouldConvertToLight(const XXH64_hash_t& h) {
-      return lightConverter().find(h) != lightConverter().end();
+      return lightConverter.containsHash(h);
     }
 
 

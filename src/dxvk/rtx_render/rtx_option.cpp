@@ -1050,6 +1050,31 @@ namespace dxvk {
     return isEqual(*layerValue, valueWithoutLayer.data);
   }
 
+  void RtxOptionImpl::publishResolvedValue() {
+    switch (m_type) {
+    case OptionType::Bool:
+    case OptionType::Int:
+    case OptionType::Float:
+      m_publishedValue.write(&m_resolvedValue.value, sizeof(m_resolvedValue.value));
+      break;
+    case OptionType::Vector2:
+      m_publishedValue.write(m_resolvedValue.v2, sizeof(Vector2));
+      break;
+    case OptionType::Vector3:
+      m_publishedValue.write(m_resolvedValue.v3, sizeof(Vector3));
+      break;
+    case OptionType::Vector4:
+      m_publishedValue.write(m_resolvedValue.v4, sizeof(Vector4));
+      break;
+    case OptionType::Vector2i:
+      m_publishedValue.write(m_resolvedValue.v2i, sizeof(Vector2i));
+      break;
+    default:
+      // Other types are not trivially copyable: getters read them under the mutex.
+      break;
+    }
+  }
+
   void RtxOptionImpl::copyValue(const GenericValue& source, GenericValue& target) {
     switch (m_type) {
     case OptionType::Bool:
@@ -1194,6 +1219,9 @@ namespace dxvk {
     if (valueHasChanged) {
       // Copy to m_resolvedValue
       copyValue(optionValue.data, value);
+      if (&value == &m_resolvedValue) {
+        publishResolvedValue();
+      }
     }
     return valueHasChanged;
   }

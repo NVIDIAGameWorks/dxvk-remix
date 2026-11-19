@@ -1258,7 +1258,7 @@ namespace {
     // for a client to be able to reproject to world space using the projection matrices
     if (dxvk::RtxOptions::enableNearPlaneOverride()) {
       assert(0);
-      const_cast<bool&>(dxvk::RtxOptions::enableNearPlaneOverride()) = false;
+      dxvk::RtxOptions::enableNearPlaneOverride.setImmediately(false);
     }
     remixDevice->EmitCs([cRtCamera = convert::toRtCamera(*info)](dxvk::DxvkContext* ctx) {
       static_cast<dxvk::RtxContext*>(ctx)->prepareScreenResolution();
@@ -1743,9 +1743,9 @@ namespace {
 
     // slightly different initial settings for HdRemix
     if (info.editorModeEnabled) {
-      const_cast<dxvk::LightManager::FallbackLightMode&>(dxvk::LightManager::fallbackLightMode()) = dxvk::LightManager::FallbackLightMode::Never;
-      const_cast<bool&>(dxvk::DxvkPostFx::desaturateOthersOnHighlight()) = false;
-      const_cast<bool&>(dxvk::RtxOptions::showUICursor()) = false;
+      dxvk::LightManager::fallbackLightMode.setDeferred(dxvk::LightManager::FallbackLightMode::Never);
+      dxvk::DxvkPostFx::desaturateOthersOnHighlight.setDeferred(false);
+      dxvk::RtxOptions::showUICursor.setDeferred(false);
     }
 
     *out_pD3D9 = d3d9ex;

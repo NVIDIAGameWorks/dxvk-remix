@@ -7296,16 +7296,22 @@ namespace dxvk {
       // so a corresponding texture stage needs to be skipped in the draw call.
       // This involves modifying D3D9FFShaderKeyFS, by which DXVK chooses a pixel shader for a draw call.
       // And because of that draw call re-usage, the checks are done here, and not in d3d9_rtx.
-      auto filterActiveTextureStage = [this, &key, &lastActiveStageIdx, &numActiveStages]
+
+      // The stage loop looks up hash sets under one lock of the option mutex.
+      // Other options are read before it, since the mutex is not recursive.
+      const bool enableRaytracing = RtxOptions::enableRaytracing();
+      const bool ignoreLastTextureStage = RtxOptions::ignoreLastTextureStage();
+
+      auto filterActiveTextureStage = [this, &key, &lastActiveStageIdx, &numActiveStages, enableRaytracing, ignoreLastTextureStage]
                                       (uint32_t stageIdx, bool isLastStage) {
-        auto shouldOmitTextureAtStage = [this, &numActiveStages](uint32_t stageIdx, bool isLastStage) {
+        auto shouldOmitTextureAtStage = [this, &numActiveStages, ignoreLastTextureStage](uint32_t stageIdx, bool isLastStage) {
           if (const auto tex = GetCommonTexture(m_state.textures[stageIdx])) {
             XXH64_hash_t texHash = tex->GetImage()->getHash();
             if (texHash != kEmptyHash) {
-              if (isLastStage && numActiveStages > 1 && RtxOptions::ignoreLastTextureStage()) {
+              if (isLastStage && numActiveStages > 1 && ignoreLastTextureStage) {
                 return true;
               }
-              if (lookupHash(RtxOptions::ignoreTextures(), texHash) || lookupHash(RtxOptions::lightmapTextures(), texHash)) {
+              if (lookupHash(RtxOptions::ignoreTextures.getValueNoLock(), texHash) || lookupHash(RtxOptions::lightmapTextures.getValueNoLock(), texHash)) {
                 return true;
               }
             }
@@ -7314,7 +7320,7 @@ namespace dxvk {
           return false;
         };
 
-        if (RtxOptions::enableRaytracing()) {
+        if (enableRaytracing) {
           if (shouldOmitTextureAtStage(stageIdx, isLastStage)) {
             D3D9FFShaderStage& stage = key.Stages[stageIdx];
             // make default
@@ -7333,6 +7339,7 @@ namespace dxvk {
       };
       // NV-DXVK end
 
+      std::unique_lock<std::mutex> optionLock(RtxOptionImpl::getUpdateMutex());
       uint32_t textureID = 0;
       uint32_t idx;
       for (idx = 0; idx < caps::TextureStageCount; idx++) {
@@ -7382,6 +7389,7 @@ namespace dxvk {
       if (idx > 0) {
         filterActiveTextureStage(idx - 1, true);
       }
+      optionLock.unlock();
       // NV-DXVK end
 
       auto& stage0 = key.Stages[0].Contents;

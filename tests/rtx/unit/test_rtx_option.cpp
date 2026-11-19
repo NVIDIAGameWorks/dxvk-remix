@@ -35,6 +35,8 @@
 #include <sstream>
 #include <string>
 #include <filesystem>
+#include <atomic>
+#include <thread>
 
 namespace dxvk {
   // Logger needed by some shared code used in this Unit Test.
@@ -2432,7 +2434,62 @@ namespace rtx_option_test {
     
     // Verify options returned to defaults after test layer release
     verifyOptionsAtDefaults();
-    
+
+    std::cout << "    PASSED" << std::endl;
+  }
+
+  // ============================================================================
+  // Test: Concurrent Reads During Resolution
+  // Getters copy trivially copyable values without the mutex while another thread resolves them.
+  // A copy must be one of the resolved values, never a mix of two.
+  // ============================================================================
+
+  void test_concurrentReadsDuringResolution() {
+    std::cout << "  Running test_concurrentReadsDuringResolution..." << std::endl;
+
+    Config emptyConfig;
+    const RtxOptionLayer* testLayer = RtxOptionManager::acquireLayer("",
+      RtxOptionLayerKey{19500, "ConcurrentReadLayer"}, 1.0f, 0.1f, false, &emptyConfig);
+    TEST_ASSERT(testLayer != nullptr, "Failed to create test layer");
+
+    const Vector3 vectorA(1.0f, 2.0f, 3.0f);
+    const Vector3 vectorB(-10.0f, -20.0f, -30.0f);
+    std::atomic<bool> writerDone = false;
+
+    // The writer alternates whole values, through immediate sets and deferred resolution.
+    std::thread writer([&]() {
+      for (uint32_t i = 0; i < 20000; ++i) {
+        const Vector3& vector = (i & 1) ? vectorB : vectorA;
+        const int32_t number = 100 + int32_t(i & 1);
+        if (i & 2) {
+          TestOptions::testVector3.setDeferred(vector, testLayer);
+          TestOptions::testInt.setDeferred(number, testLayer);
+          RtxOptionManager::applyPendingValues(nullptr, false);
+        } else {
+          TestOptions::testVector3.setImmediately(vector, testLayer);
+          TestOptions::testInt.setImmediately(number, testLayer);
+        }
+      }
+      writerDone = true;
+    });
+
+    uint64_t mixedReads = 0;
+    while (!writerDone) {
+      const Vector3 vector = TestOptions::testVector3();
+      const int32_t number = TestOptions::testInt();
+      if ((vector != vectorA && vector != vectorB) || (number != 100 && number != 101)) {
+        ++mixedReads;
+      }
+    }
+    writer.join();
+
+    TEST_ASSERT(mixedReads == 0, "Getters returned " << mixedReads << " values that were never resolved");
+
+    // Clean up
+    RtxOptionManager::releaseLayer(testLayer);
+    RtxOptionManager::applyPendingValues(nullptr, false);
+    verifyOptionsAtDefaults();
+
     std::cout << "    PASSED" << std::endl;
   }
 
@@ -2440,7 +2497,7 @@ namespace rtx_option_test {
   // Test: Dynamic Min/Max Setting
   // Tests setMinValue and setMaxValue methods
   // ============================================================================
-  
+
   void test_dynamicMinMax() {
     std::cout << "  Running test_dynamicMinMax..." << std::endl;
     
@@ -3061,6 +3118,7 @@ namespace rtx_option_test {
     // Blending tests
     test_floatBlending();
     test_vectorBlending();
+    test_concurrentReadsDuringResolution();
     test_blendThreshold();
     test_blendStrengthRequest();
     test_blendThresholdRequest();
