@@ -60,6 +60,9 @@ namespace dxvk {
     ColorSpace          m_colorSpace    = { ColorSpace::AUTO };
     size_t              m_uniqueKey     = kInvalidTextureKey;
     bool                m_canDemote       = true;
+    // Mip limits of m_assetData, set with it by setAssetData(), so per-frame mip checks do not read the asset.
+    uint32_t            m_assetMipLevels             = 0;
+    uint32_t            m_assetMininumLevelsToUpload = 0;
 
     // Stage 2 - Video memory
     // The range [m_currentMip_begin, m_currentMip_end) defines the mip-levels that were used to create m_currentMipView.
@@ -81,6 +84,7 @@ namespace dxvk {
     int32_t             m_refCount = 0;  // number of live RtInstances whose bound surface material references this texture; negative values indicate a retain/release bug
 
   public:
+    void setAssetData(const Rc<AssetData>& assetData);
     bool hasUploadedMips(uint32_t requiredMips, bool exact) const;
     void requestMips(uint32_t requiredMips);
     std::pair<uint16_t, uint16_t> calcRequiredMips_BeginEnd() const;

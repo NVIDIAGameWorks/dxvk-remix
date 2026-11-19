@@ -1594,9 +1594,10 @@ namespace dxvk {
           feedInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_HOST_READ_BIT;
           feedInfo.size = sizeInBytes;
         }
+        // Host-cached: the texture manager copies it out every frame, and reads from uncached memory are slow
         readbackBuf = m_device->createBuffer(
           feedInfo,
-          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
           DxvkMemoryStats::Category::RTXBuffer, "Sampler Feedback Readback Buffer");
 
         // initial reset, as if all textures accessed last mip

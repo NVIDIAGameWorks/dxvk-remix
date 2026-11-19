@@ -1167,7 +1167,7 @@ namespace dxvk {
       }
 
       // replace information about the file
-      tex->m_assetData = newAssetData;
+      tex->setAssetData(newAssetData);
       tex->requestMips(0);
       constexpr bool forceUnload = true; // do not check current mip count
       scheduleTextureLoad(tex, false, forceUnload );
@@ -1322,11 +1322,12 @@ namespace dxvk {
           accum.frame = curframe;
           accum.mipcount = new_mipcount;
         }
+        // Average only the frames that sampled the texture: frames without feedback would pull it to 0.
+        accum.avgMipcount = (float(new_mipcount) + accum.avgMipcount) * 0.5f;
       }
 
-      accum.avgMipcount = (float(new_mipcount) + accum.avgMipcount) * 0.5f;
-
-      if (canReset) {
+      // Reset only on frames with feedback: a refreshed frame on an unsampled texture would raise its priority again.
+      if (canReset && new_mipcount != 0) {
         assert(curframe >= accum.frame);
         if (curframe - accum.frame > FRAMES_TO_DETAIN) {
           accum.frame = curframe;
@@ -1346,7 +1347,23 @@ namespace dxvk {
     m_wasTextureBudgetPressure = false;
 
     
-    static auto prioritylist = std::vector<ManagedTexture*>{};
+    // A texture is settled when its mip request is unchanged and those mips are queued or uploaded.
+    // requestMips and scheduleTextureLoad would not change a settled texture, so the pass skips them.
+    auto isSettled = [](const ManagedTexture& tex, uint32_t mips) {
+      const uint8_t requested = uint8_t(std::clamp<uint32_t>(mips, 1, MAX_MIPS)); // as requestMips() stores it
+      const ManagedTexture::State state = tex.m_state;
+      return tex.m_requestedMips == requested &&
+             (state == ManagedTexture::State::kQueuedForUpload ||
+              (state == ManagedTexture::State::kVidMem && tex.hasUploadedMips(requested, true)));
+    };
+
+    // A sampler feedback texture with its sort weight, computed once rather than in every sort comparison.
+    struct PrioritizedTexture {
+      float           weight;
+      uint16_t        stamp;
+      ManagedTexture* tex;
+    };
+    static auto prioritylist = std::vector<PrioritizedTexture>{};
     static auto checkonlyframes = std::vector<ManagedTexture*>{};
     {
       prioritylist.clear();
@@ -1356,8 +1373,9 @@ namespace dxvk {
         assert(tex != nullptr);
         if (tex != nullptr && tex->m_canDemote) {
           if (tex->m_refCount > 0 && tex->m_samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID) {
-            prioritylist.push_back(tex.ptr());
-          } else {
+            const float weight = calcResolutionAndHistoryWeightForTexture(m_sf.m_accumulatedMipcount[tex->m_samplerFeedbackStamp], curframe);
+            prioritylist.push_back({ weight, tex->m_samplerFeedbackStamp, tex.ptr() });
+          } else if (!isSettled(*tex, tex->m_refCount > 0 ? MAX_MIPS : 0)) {
             checkonlyframes.push_back(tex.ptr());
           }
         }
@@ -1377,22 +1395,19 @@ namespace dxvk {
     // For sampler-feedback textures, make a list, so that the low priority textures are at the end.
     // If full list doesn't fit into the budget, demote the low priority ones.
     {
-      auto l_sort = [curframe, this](const ManagedTexture* a, const ManagedTexture* b) {
-        assert(a && b);
-        float weightA = calcResolutionAndHistoryWeightForTexture(m_sf.m_accumulatedMipcount[a->m_samplerFeedbackStamp], curframe);
-        float weightB = calcResolutionAndHistoryWeightForTexture(m_sf.m_accumulatedMipcount[b->m_samplerFeedbackStamp], curframe);
-
-        if (std::abs(weightA - weightB) < 0.00001f) {
-          return (a->m_samplerFeedbackStamp < b->m_samplerFeedbackStamp); // stable fallback, if too similar
+      auto l_sort = [](const PrioritizedTexture& a, const PrioritizedTexture& b) {
+        if (std::abs(a.weight - b.weight) < 0.00001f) {
+          return (a.stamp < b.stamp); // stable fallback, if too similar
         }
-        return weightA > weightB;
+        return a.weight > b.weight;
       };
       std::sort(prioritylist.begin(), prioritylist.end(), l_sort);
     }
     {
       const size_t budgetBytes = calcTextureMemoryBudgetBytes(m_device);
       size_t       usedBytes   = 0;
-      for (ManagedTexture* tex : prioritylist) {
+      for (const PrioritizedTexture& prioritized : prioritylist) {
+        ManagedTexture* tex = prioritized.tex;
         assert(tex && tex->m_canDemote && tex->m_samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID);
         // for low memory GPUs we should do our best to not blow through all memory, lower the highest quality mip level
         // need to account for textures that dont have more than 1 mip level here too.
@@ -1402,18 +1417,24 @@ namespace dxvk {
         mipc = std::min(mipc, allmipcount);
 
         // TODO: potential bottleneck
-        size_t byteSize = calcSizeForAsset(*tex->m_assetData, allmipcount - mipc, allmipcount);
+        // Size the mips the loader uploads, the smallest mipc ones, also when low memory mode leaves out the top mip.
+        // The loader always uploads at least the asset's minimum mip tail.
+        const uint32_t mipLevels = tex->m_assetData->info().mipLevels;
+        const uint32_t uploadMipCount = std::clamp(mipc, tex->m_assetMininumLevelsToUpload, mipLevels);
+        size_t byteSize = calcSizeForAsset(*tex->m_assetData, mipLevels - uploadMipCount, mipLevels);
 
         if (usedBytes + byteSize <= budgetBytes) {
           usedBytes += byteSize;
-          tex->requestMips(mipc);
         } else {
           // doesn't fit => demote
-          tex->requestMips(0);
+          mipc = 0;
           m_wasTextureBudgetPressure = true;
         }
 
-        scheduleTextureLoad(tex, true);
+        if (!isSettled(*tex, mipc)) {
+          tex->requestMips(mipc);
+          scheduleTextureLoad(tex, true);
+        }
       }
       assert(usedBytes <= budgetBytes);
 
