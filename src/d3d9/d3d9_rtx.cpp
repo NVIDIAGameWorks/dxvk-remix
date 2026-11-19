@@ -997,6 +997,12 @@ namespace dxvk {
     const uint8_t kInvalidStage = 0xFF;
     uint8_t texcoordIndexToStage[NumTexcoordBins];
     if constexpr (FixedFunction) {
+      // The stage loop looks up hash sets under one lock of the option mutex.
+      // Other options are read before it, since the mutex is not recursive.
+      const bool enableMultiStageTextureFactorBlending = RtxOptions::enableMultiStageTextureFactorBlending();
+      const bool allowCubemapTextures = allowCubemaps();
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+
       memset(&texcoordIndexToStage[0], kInvalidStage, sizeof(texcoordIndexToStage));
       for (uint32_t stage = 0; stage < caps::TextureStageCount; stage++) {
         auto isTextureFactorBlendingEnabled = [&](const auto& tss) -> bool {
@@ -1041,7 +1047,7 @@ namespace dxvk {
         // Note: If the tFactor is disabled for current texture (useStageTextureFactorBlending) then we should ignore the multiple stage tFactor blendings.
         bool isCurrentStageTextureFactorBlendingEnabled = false;
         if (useStageTextureFactorBlending &&
-            RtxOptions::enableMultiStageTextureFactorBlending() &&
+            enableMultiStageTextureFactorBlending &&
             stage != 0 &&
             isTextureFactorBlendingEnabled(d3d9State().textureStages[stage])) {
           isCurrentStageTextureFactorBlendingEnabled = true;
@@ -1073,14 +1079,14 @@ namespace dxvk {
         D3D9CommonTexture* texture = GetCommonTexture(d3d9State().textures[stage]);
 
         // Remix can only handle 2D textures - no volumes.
-        if (texture->GetType() != D3DRTYPE_TEXTURE && (!allowCubemaps() || texture->GetType() != D3DRTYPE_CUBETEXTURE)) {
+        if (texture->GetType() != D3DRTYPE_TEXTURE && (!allowCubemapTextures || texture->GetType() != D3DRTYPE_CUBETEXTURE)) {
           continue;
         }
 
         const XXH64_hash_t texHash = texture->GetSampleView(true)->image()->getHash();
 
         // Currently we only support regular textures, skip lightmaps.
-        if (lookupHash(RtxOptions::lightmapTextures(), texHash)) {
+        if (lookupHash(RtxOptions::lightmapTextures.getValueNoLock(), texHash)) {
           continue;
         }
 
@@ -1100,7 +1106,7 @@ namespace dxvk {
 
         // Check if texture factor blending is enabled
         if (isCurrentStageTextureFactorBlendingEnabled &&
-            lookupHash(RtxOptions::ignoreBakedLightingTextures(), texHash)) {
+            lookupHash(RtxOptions::ignoreBakedLightingTextures.getValueNoLock(), texHash)) {
           useStageTextureFactorBlending = false;
           useMultipleStageTextureFactorBlending = false;
         }
@@ -1171,8 +1177,6 @@ namespace dxvk {
       // This ensures we track all textures sent by the game, not just the ones that are actually rendered.
       const XXH64_hash_t textureHash = m_activeDrawCallState.materialData.getColorTexture().getImageHash();
 
-      // Flag smooth normals category at the d3d9 layer
-      m_activeDrawCallState.setCategory(InstanceCategories::SmoothNormals, lookupHash(RtxOptions::smoothNormalsTextures(), textureHash));
       if (textureHash != kEmptyHash) {
         m_parent->EmitCs([textureHash](DxvkContext* ctx) {
           static_cast<RtxContext*>(ctx)->getSceneManager().trackReplacementMaterialHash(textureHash);

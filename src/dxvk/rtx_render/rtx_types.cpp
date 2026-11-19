@@ -386,42 +386,47 @@ namespace dxvk {
   }
 
   void DrawCallState::setupCategoriesForTexture() {
+    // One lock of the option mutex for all lookups instead of one per option.
+    // The sets are read under it, so a resolve cannot reallocate them meanwhile.
+    std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+
     // TODO (REMIX-231): It would probably be much more efficient to use a map of texture hash to category flags, rather
     //                   than doing N lookups per texture hash for each category.
     const XXH64_hash_t& textureHash = materialData.getColorTexture().getImageHash();
 
-    setCategory(InstanceCategories::WorldUI, lookupHash(RtxOptions::worldSpaceUiTextures(), textureHash));
-    setCategory(InstanceCategories::WorldMatte, lookupHash(RtxOptions::worldSpaceUiBackgroundTextures(), textureHash));
+    setCategory(InstanceCategories::WorldUI, lookupHash(RtxOptions::worldSpaceUiTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::WorldMatte, lookupHash(RtxOptions::worldSpaceUiBackgroundTextures.getValueNoLock(), textureHash));
 
-    setCategory(InstanceCategories::Ignore, lookupHash(RtxOptions::ignoreTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreLights, lookupHash(RtxOptions::ignoreLights(), textureHash));
-    setCategory(InstanceCategories::IgnoreAntiCulling, lookupHash(RtxOptions::antiCullingTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreMotionBlur, lookupHash(RtxOptions::motionBlurMaskOutTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash) || isUsingRaytracedRenderTarget);
-    setCategory(InstanceCategories::IgnoreAlphaChannel, lookupHash(RtxOptions::ignoreAlphaOnTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreBakedLighting, lookupHash(RtxOptions::ignoreBakedLightingTextures(), textureHash));
+    setCategory(InstanceCategories::Ignore, lookupHash(RtxOptions::ignoreTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::IgnoreLights, lookupHash(RtxOptions::ignoreLights.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::IgnoreAntiCulling, lookupHash(RtxOptions::antiCullingTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::IgnoreMotionBlur, lookupHash(RtxOptions::motionBlurMaskOutTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures.getValueNoLock(), textureHash) || isUsingRaytracedRenderTarget);
+    setCategory(InstanceCategories::IgnoreAlphaChannel, lookupHash(RtxOptions::ignoreAlphaOnTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::IgnoreBakedLighting, lookupHash(RtxOptions::ignoreBakedLightingTextures.getValueNoLock(), textureHash));
 
-    setCategory(InstanceCategories::Hidden, lookupHash(RtxOptions::hideInstanceTextures(), textureHash));
+    setCategory(InstanceCategories::Hidden, lookupHash(RtxOptions::hideInstanceTextures.getValueNoLock(), textureHash));
 
-    setCategory(InstanceCategories::Particle, lookupHash(RtxOptions::particleTextures(), textureHash));
-    setCategory(InstanceCategories::Beam, lookupHash(RtxOptions::beamTextures(), textureHash));
+    setCategory(InstanceCategories::Particle, lookupHash(RtxOptions::particleTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::Beam, lookupHash(RtxOptions::beamTextures.getValueNoLock(), textureHash));
 
-    setCategory(InstanceCategories::DecalStatic, lookupHash(RtxOptions::decalTextures(), textureHash));
-    setCategory(InstanceCategories::DecalDynamic, lookupHash(RtxOptions::dynamicDecalTextures(), textureHash));
-    setCategory(InstanceCategories::DecalSingleOffset, lookupHash(RtxOptions::singleOffsetDecalTextures(), textureHash));
-    setCategory(InstanceCategories::DecalNoOffset, lookupHash(RtxOptions::nonOffsetDecalTextures(), textureHash));
+    setCategory(InstanceCategories::DecalStatic, lookupHash(RtxOptions::decalTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::DecalDynamic, lookupHash(RtxOptions::dynamicDecalTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::DecalSingleOffset, lookupHash(RtxOptions::singleOffsetDecalTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::DecalNoOffset, lookupHash(RtxOptions::nonOffsetDecalTextures.getValueNoLock(), textureHash));
 
-    setCategory(InstanceCategories::AnimatedWater, lookupHash(RtxOptions::animatedWaterTextures(), textureHash));
-    setCategory(InstanceCategories::Sludge, lookupHash(RtxOptions::sludgeTextures(), textureHash));
+    setCategory(InstanceCategories::AnimatedWater, lookupHash(RtxOptions::animatedWaterTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::Sludge, lookupHash(RtxOptions::sludgeTextures.getValueNoLock(), textureHash));
 
-    setCategory(InstanceCategories::ThirdPersonPlayerModel, lookupHash(RtxOptions::playerModelTextures(), textureHash));
-    setCategory(InstanceCategories::ThirdPersonPlayerBody, lookupHash(RtxOptions::playerModelBodyTextures(), textureHash));
+    setCategory(InstanceCategories::ThirdPersonPlayerModel, lookupHash(RtxOptions::playerModelTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::ThirdPersonPlayerBody, lookupHash(RtxOptions::playerModelBodyTextures.getValueNoLock(), textureHash));
 
-    setCategory(InstanceCategories::Terrain, lookupHash(RtxOptions::terrainTextures(), textureHash));
-    setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxTextures(), textureHash));
+    setCategory(InstanceCategories::Terrain, lookupHash(RtxOptions::terrainTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxTextures.getValueNoLock(), textureHash));
 
-    setCategory(InstanceCategories::ParticleEmitter, lookupHash(RtxOptions::particleEmitterTextures(), textureHash));
-    setCategory(InstanceCategories::HairCards, lookupHash(RtxOptions::hairCardTextures(), textureHash));
+    setCategory(InstanceCategories::ParticleEmitter, lookupHash(RtxOptions::particleEmitterTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::HairCards, lookupHash(RtxOptions::hairCardTextures.getValueNoLock(), textureHash));
+    setCategory(InstanceCategories::SmoothNormals, lookupHash(RtxOptions::smoothNormalsTextures.getValueNoLock(), textureHash));
   }
 
   void DrawCallState::setupCategoriesForGeometry() {

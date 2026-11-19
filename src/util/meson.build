@@ -58,6 +58,7 @@ util_src = files([
 
   'util_threadpool.h',
   'util_atomic_queue.h',
+  'util_lock_free_single_writer_value.h',
 
   'util_renderprocessor.h',
   
