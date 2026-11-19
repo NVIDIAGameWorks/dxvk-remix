@@ -69,7 +69,8 @@ class AccelManager : public CommonDeviceObject {
     // Tries to add a geometry instance to the bucket. The addition is successful if either:
     //   a) the bucket is empty,
     //   b) the instance has the same mask etc. as all other instances in the bucket.
-    bool tryAddInstance(RtInstance* instance);
+    // The instance's transform is set on the bucket's copies of its geometries only.
+    bool tryAddInstance(RtInstance* instance, VkDeviceAddress transformDeviceAddress);
   };
 
   // Key for O(1) bucket lookup in the merged-BLAS path.
