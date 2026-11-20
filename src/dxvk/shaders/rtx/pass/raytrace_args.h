@@ -466,6 +466,10 @@ struct RaytraceArgs {
   float alphaBlendDissolvePatternNoiseScale;
   float alphaBlendDissolvePatternSpatialScale;
 
+  // Mean linear scale of the view-model correction applied this frame (1 without view models), for distances
+  // authored at the original size, such as subsurface radii.
+  float viewModelDistanceScale;
+
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
   // NOTE: bool does not work in debug builds, use uint instead.
 };

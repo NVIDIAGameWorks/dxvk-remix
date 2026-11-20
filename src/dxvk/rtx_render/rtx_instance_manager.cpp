@@ -1638,6 +1638,7 @@ namespace dxvk {
     viewModelInstance->setFrameLastUpdated(frameId);
     viewModelInstance->m_vkInstance.mask = OBJECT_MASK_VIEWMODEL;
     viewModelInstance->setCustomIndexBit(CUSTOM_INDEX_IS_VIEW_MODEL, true);
+    viewModelInstance->surface.isViewModel = true;
 
     if (RtxOptions::ViewModel::perspectiveCorrection()) {
       // A transform that looks "correct" only from a main camera's point of view
@@ -1700,6 +1701,7 @@ namespace dxvk {
                                                  const RayPortalManager& rayPortalManager) {
     ScopedGpuProfileZone(ctx, "ViewModel");
     m_hasViewModelEyeCorrection = false;
+    m_viewModelDistanceScale = 1.0f;
 
     auto cleanupAllPersistentViewModelInstances = [this]() {
       for (auto& [ref, inst] : m_persistentViewModelInstances) {
@@ -1758,6 +1760,12 @@ namespace dxvk {
     // The 'objectToWorld' matrices are applied later, in createViewModelInstance, because they're different per-instance.
     const auto perspectiveCorrection = camera.getViewToWorld(false) * (camera.getProjectionToView() * viewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getWorldToView(false);
     const auto prevPerspectiveCorrection = camera.getPreviousViewToWorld(false) * (camera.getPreviousProjectionToView() * previousViewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getPreviousWorldToView(false);
+
+    if (RtxOptions::ViewModel::perspectiveCorrection()) {
+      // The correction scales view-model geometry by the view-model scale and the FOV ratio, which can differ per axis.
+      // The cube root of its determinant is the mean linear scale.
+      m_viewModelDistanceScale = static_cast<float>(std::cbrt(std::abs(determinant(perspectiveCorrection))));
+    }
 
     // Create any valid view model instances from the list of candidates
     std::vector<RtInstance*> viewModelInstances;

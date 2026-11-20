@@ -488,6 +488,14 @@ struct Surface
     set { data13.z = (data13.z & ~(alphaBlendDissolveMask << alphaBlendDissolveShift)) | (uint32_t(newValue & alphaBlendDissolveMask) << alphaBlendDissolveShift); }
   }
 
+  // Set on view-model instances, which the view-model perspective correction shrinks around the camera
+  // (see cb.viewModelDistanceScale).
+  property bool isViewModel
+  {
+    get { return packedFlagGet(data13.z, 1 << 22); }
+    set { data13.z = newValue ? packedFlagSet(data13.z, 1 << 22) : packedFlagUnset(data13.z, 1 << 22); }
+  }
+
   property uint tFactor
   {
     get { return data13.y; }
