@@ -223,6 +223,13 @@ void sendInstanceInfo(ClientMessage& c, const remixapi_InstanceInfo& info, const
         serializeAndSend<serialize::InstanceInfoParticleScreenSize>(c, *pScreenSize);
         break;
       }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_MASK_EXT:
+      {
+        auto* pMask = static_cast<const remixapi_InstanceInfoParticleSpawnMaskEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::InstanceInfoParticleSpawnMask>(c, *pMask);
+        break;
+      }
       default:
       {
         Logger::warn(format_string("[%s] Unknown sType. Skipping.", pCaller));

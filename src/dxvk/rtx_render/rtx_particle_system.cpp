@@ -28,6 +28,7 @@
 #include "dxvk_context.h"
 #include "rtx_context.h"
 #include "rtx_imgui.h"
+#include "rtx_texture_manager.h"
 
 #include "../util/util_global_time.h"
 
@@ -238,6 +239,19 @@ namespace dxvk {
               {ParticleSpawnDistribution::BySurfaceArea, "By Surface Area"},
             } });
           spawnDistributionCombo.getKey(&spawnDistributionObject());
+          static auto maskSourceCombo = RemixGui::ComboWithKey<uint32_t>("Birth Mask Source",
+            RemixGui::ComboWithKey<uint32_t>::ComboEntries { {
+              {0, "Off"}, {1, "Alpha"}, {2, "Luminance"}, {3, "Alpha times Luminance"},
+            } });
+          maskSourceCombo.getKey(&spawnMaskSourceObject());
+          if (spawnMaskSource() != 0) {
+            static auto maskResponseCombo = RemixGui::ComboWithKey<uint32_t>("Birth Mask Response",
+              RemixGui::ComboWithKey<uint32_t>::ComboEntries { {{0, "Grayscale"}, {1, "Cutout"}} });
+            maskResponseCombo.getKey(&spawnMaskResponseObject());
+            if (spawnMaskResponse() == 1) {
+              RemixGui::DragFloat("Birth Mask Threshold", &spawnMaskThresholdObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            }
+          }
           RemixGui::Separator();
           RemixGui::InputFloat3("Max Velocity", &maxSpawnVelocityObject());
           RemixGui::DragFloat("Initial Velocity From Motion", &initialVelocityFromMotionObject(), 0.01f, -5000.f, 5000.f, "%.2f");
@@ -398,10 +412,10 @@ namespace dxvk {
   static_assert(sizeof(GpuParticle) == 12 * 4, "Unexpected, please check perf");
   static_assert(offsetof(GpuParticle, emitterObjectPickingValue) == 44, "Particle picking ID must reuse existing padding");
   static_assert(sizeof(ParticleVertex) == 24, "Particle picking must not grow the vertex buffer");
-  static_assert(sizeof(GpuSpawnContext) == 144 && offsetof(GpuSpawnContext, emitterObjectPickingValue) == 128, "Spawn context layout must match shaders");
+  static_assert(sizeof(GpuSpawnContext) == 224 && offsetof(GpuSpawnContext, emitterObjectPickingValue) == 128 && offsetof(GpuSpawnContext, spawnMaskUvU) == 144, "Spawn context layout must match shaders");
   static_assert(sizeof(GpuParticleSystemDesc) % (4 * 4) == 0, "Unexpected, please check perf");
-  static_assert(sizeof(GpuParticleSystemDesc) == 112 && offsetof(GpuParticleSystemDesc, minScreenSize) == 96, "Particle descriptor layout must match shaders");
-  static_assert(offsetof(ParticleSystemConstants, worldToProjection) == 336 && sizeof(ParticleSystemConstants) == 448, "Particle constants layout must match shaders");
+  static_assert(sizeof(GpuParticleSystemDesc) == 128 && offsetof(GpuParticleSystemDesc, minScreenSize) == 96 && offsetof(GpuParticleSystemDesc, spawnMaskSource) == 112, "Particle descriptor layout must match shaders");
+  static_assert(offsetof(ParticleSystemConstants, worldToProjection) == 352 && sizeof(ParticleSystemConstants) == 464, "Particle constants layout must match shaders");
 
   RtxParticleSystemDesc RtxParticleSystemManager::createGlobalParticleSystemDesc() {
     RtxParticleSystemDesc desc;
@@ -419,6 +433,9 @@ namespace dxvk {
     desc.minSpawnRotationSpeed = RtxParticleSystemManager::minSpawnRotationSpeed();
     desc.useSpawnTexcoords = RtxParticleSystemManager::useSpawnTexcoords() ? 1 : 0;
     desc.spawnDistribution = RtxParticleSystemManager::spawnDistribution() == ParticleSpawnDistribution::BySurfaceArea;
+    desc.spawnMaskSource = RtxParticleSystemManager::spawnMaskSource();
+    desc.spawnMaskResponse = RtxParticleSystemManager::spawnMaskResponse();
+    desc.spawnMaskThreshold = RtxParticleSystemManager::spawnMaskThreshold();
     desc.enableCollisionDetection = RtxParticleSystemManager::enableCollisionDetection() ? 1 : 0;
     desc.alignParticlesToVelocity = RtxParticleSystemManager::alignParticlesToVelocity() ? 1 : 0;
     desc.collisionRestitution = RtxParticleSystemManager::collisionRestitution();
@@ -613,6 +630,23 @@ namespace dxvk {
     spawnCtx.instanceIdentity = instance.getCacheIdentity();
     spawnCtx.particleSystemHash = particleSystem->getLookupHash();
     spawnCtx.emitterObjectPickingValue = drawCallState.getParticleObjectPickingValue();
+    if (desc.spawnMaskSource != uint(ParticleSpawnMaskSource::Off) && renderMaterialData.getType() == MaterialDataType::Opaque && !drawCallState.isUsingRaytracedRenderTarget) {
+      const auto& source = renderMaterialData.getOpaqueMaterialData();
+      spawnCtx.spawnMaskSupported = true;
+      spawnCtx.spawnMaskHasTexture = source.getAlbedoOpacityTexture().isValid();
+      spawnCtx.spawnMaskConstant = vec4(vec3(source.getAlbedoConstant()), source.getOpacityConstant());
+      if (spawnCtx.spawnMaskHasTexture) {
+        const auto& texture = source.getAlbedoOpacityTexture();
+        auto& textureManager = m_device->getCommon()->getTextureManager();
+        uint16_t feedbackStamp = SAMPLER_FEEDBACK_INVALID;
+        if (texture.getManagedTexture() != nullptr) {
+          feedbackStamp = texture.getManagedTexture()->m_samplerFeedbackStamp;
+        }
+        // Resolve the birth source independently of white-material rendering overrides.
+        textureManager.addTexture(texture, feedbackStamp, true, spawnCtx.spawnMaskTextureIndex);
+        textureManager.requestFullDetailFeedback(spawnCtx.spawnMaskTextureIndex, feedbackStamp);
+      }
+    }
 
     // Update material specific counters
     particleSystem->context.particleHeadOffset += numParticles;
@@ -935,6 +969,39 @@ namespace dxvk {
       gpuCtx.spawnMeshTexcoordsStride = pTargetInstance->surface.texcoordStride;
 
       const auto system = m_particleSystems.find(spawnCtx.particleSystemHash);
+      if (system != m_particleSystems.end() && system->second->context.desc.spawnMaskSource != uint(ParticleSpawnMaskSource::Off) && spawnCtx.spawnMaskSupported) {
+        gpuCtx.spawnMaskConstant = spawnCtx.spawnMaskConstant;
+        if (!spawnCtx.spawnMaskHasTexture) {
+          gpuCtx.spawnMaskStatus = 1;
+        } else {
+          const uint32_t textureIndex = spawnCtx.spawnMaskTextureIndex;
+          const uint32_t samplerIndex = pTargetInstance->getSamplerIndex();
+          if (textureIndex != BINDING_INDEX_INVALID && samplerIndex != BINDING_INDEX_INVALID && gpuCtx.spawnMeshTexcoordsIdx != BINDING_INDEX_INVALID
+              && pTargetInstance->surface.texgenMode == TexGenMode::None) {
+            gpuCtx.spawnMaskStatus = 2;
+            gpuCtx.spawnMaskTextureIdx = uint16_t(textureIndex);
+            gpuCtx.spawnMaskSamplerIdx = uint16_t(samplerIndex);
+            const Matrix4 transform = pTargetInstance->surface.getTextureTransform(GlobalTime::get().absoluteTimeUs());
+            gpuCtx.spawnMaskUvU = vec4(transform[0].x, transform[1].x, transform[2].x, transform[3].x);
+            gpuCtx.spawnMaskUvV = vec4(transform[0].y, transform[1].y, transform[2].y, transform[3].y);
+            const auto& surface = pTargetInstance->surface;
+            const uint32_t rows = surface.spriteSheetRows;
+            const uint32_t cols = surface.spriteSheetCols;
+            if (surface.spriteSheetFPS && rows && cols) {
+              const uint32_t frame = uint32_t(GlobalTime::get().animationTimeSeconds() * surface.spriteSheetFPS) % (rows * cols);
+              gpuCtx.spawnMaskAnimated = 1;
+              gpuCtx.spawnMaskSprite = vec4(1.f / cols, 1.f / rows, float(frame % cols) / cols, float(frame / cols) / rows);
+            }
+            const auto& textures = ctx->getDevice()->getCommon()->getTextureManager().getTextureTable();
+            if (textureIndex < textures.size() && textures[textureIndex].getImageView() != nullptr) {
+              const VkFormat format = textures[textureIndex].getImageView()->info().format;
+              gpuCtx.spawnMaskSrgb = imageFormatInfo(format)->flags.test(DxvkFormatFlag::ColorSpaceSrgb);
+            } else {
+              gpuCtx.spawnMaskStatus = 0;
+            }
+          }
+        }
+      }
       if (system != m_particleSystems.end() && system->second->context.desc.spawnDistribution == ParticleSpawnDistribution::BySurfaceArea) {
         m_spawnDistributions[contextIdx] = prepareSpawnDistribution(ctx, *pTargetInstance, gpuCtx);
         if (m_spawnDistributions[contextIdx] == nullptr) {

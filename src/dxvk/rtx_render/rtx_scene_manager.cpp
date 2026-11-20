@@ -426,6 +426,7 @@ namespace dxvk {
       assert(false && "SceneManager::clear: thin-opaque count non-zero after instance destruction");
       m_thinOpaqueCount = 0;
     }
+    textureManager.releaseFullDetailFeedback();
     textureManager.assertAllRefCountsZero();
 
     // Now safe to clear material caches; all ref counts have been released.

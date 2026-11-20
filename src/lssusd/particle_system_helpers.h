@@ -53,7 +53,7 @@
   FLOAT(screenSizeCoverage, 1.0f)
 
 namespace lss {
-  inline constexpr std::size_t kParticleSystemSchemaPropertyCount = 133;
+  inline constexpr std::size_t kParticleSystemSchemaPropertyCount = 136;
 
   template<typename TDest, typename TSrc>
   inline TDest AssignFromPrimvar(const TSrc& src) {
@@ -133,6 +133,25 @@ namespace lss {
       return ParticleRandomFlipAxis::Both;
     }
     return ParticleRandomFlipAxis::None;
+  }
+
+  template<>
+  inline ParticleSpawnMaskSource AssignFromPrimvar<ParticleSpawnMaskSource, pxr::TfToken>(const pxr::TfToken& token) {
+    if (token == pxr::TfToken("Alpha")) {
+      return ParticleSpawnMaskSource::Alpha;
+    }
+    if (token == pxr::TfToken("Luminance")) {
+      return ParticleSpawnMaskSource::Luminance;
+    }
+    if (token == pxr::TfToken("AlphaTimesLuminance")) {
+      return ParticleSpawnMaskSource::AlphaTimesLuminance;
+    }
+    return ParticleSpawnMaskSource::Off;
+  }
+
+  template<>
+  inline ParticleSpawnMaskResponse AssignFromPrimvar<ParticleSpawnMaskResponse, pxr::TfToken>(const pxr::TfToken& token) {
+    return token == pxr::TfToken("Cutout") ? ParticleSpawnMaskResponse::Cutout : ParticleSpawnMaskResponse::Grayscale;
   }
 
   template<>

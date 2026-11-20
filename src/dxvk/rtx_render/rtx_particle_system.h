@@ -53,6 +53,10 @@ namespace dxvk {
       uint32_t instanceId;
       uint64_t instanceIdentity;
       XXH64_hash_t particleSystemHash;
+      vec4 spawnMaskConstant;
+      bool spawnMaskSupported = false;
+      bool spawnMaskHasTexture = false;
+      uint32_t spawnMaskTextureIndex = BINDING_INDEX_INVALID;
       uint32_t particleOffset;
       uint32_t particleMapOffset;
       uint32_t emitterObjectPickingValue;
@@ -257,6 +261,9 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", Vector3, maxSpawnVelocity, Vector3(-1.f), "Maximum velocity of a particle in world space (in centimeters per second) to be used at spawn time.  Negative values imply unlimited.");
     RTX_OPTION("rtx.particles.globalPreset", Vector3, maxTargetVelocity, Vector3(-1.f), "Maximum velocity of a particle in world space (in centimeters per second) at a particles end of life.  Negative values imply unlimited.");
     RTX_OPTION("rtx.particles.globalPreset", bool, useSpawnTexcoords, false, "Use the texture coordinates of the emitter mesh when spawning particles.");
+    RTX_OPTION("rtx.particles.globalPreset", uint32_t, spawnMaskSource, 0, "Birth mask. 0: Off, 1: Source alpha, 2: Linear luminance, 3: Alpha times linear luminance. Rejected births reduce the emission rate.");
+    RTX_OPTION("rtx.particles.globalPreset", uint32_t, spawnMaskResponse, 0, "Birth mask response. 0: Grayscale probability, 1: Cutout threshold.");
+    RTX_OPTION_ARGS("rtx.particles.globalPreset", float, spawnMaskThreshold, 0.5f, "Normalized birth mask cutoff for the Cutout response.", args.minValue = 0.f, args.maxValue = 1.f);
     RTX_OPTION("rtx.particles.globalPreset", ParticleSpawnDistribution, spawnDistribution, ParticleSpawnDistribution::ByTriangle, "Emitter triangle selection. 0: Equal probability per triangle. 1: Probability proportional to current world-space surface area.");
     RTX_OPTION("rtx.particles.globalPreset", bool, alignParticlesToVelocity, false, "Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed.");
     RTX_OPTION("rtx.particles.globalPreset", bool, enableCollisionDetection, false, "Enables particle collisions with the world.");

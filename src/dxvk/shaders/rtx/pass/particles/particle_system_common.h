@@ -64,6 +64,16 @@ struct GpuSpawnContext {
   uint pad0;
   uint pad1;
   uint pad2;
+
+  vec4 spawnMaskUvU;
+  vec4 spawnMaskUvV;
+  vec4 spawnMaskSprite;
+  vec4 spawnMaskConstant;
+  uint spawnMaskStatus;
+  uint16_t spawnMaskTextureIdx;
+  uint16_t spawnMaskSamplerIdx;
+  uint spawnMaskAnimated;
+  uint spawnMaskSrgb;
 };
 
 struct ParticleSpawnDistributionConstants {
@@ -123,6 +133,10 @@ struct GpuParticleSystemDesc {
   float maxScreenSize;
   float screenSizeCoverage;
   uint screenSizePad;
+  uint spawnMaskSource;
+  uint spawnMaskResponse;
+  float spawnMaskThreshold;
+  uint spawnMaskPad;
 
 // Note: Spatial fields (collisionThickness, attractorRadius, gravityForce,
   // initialVelocityFromNormal, attractorForce, turbulenceForce, turbulenceFrequency)
@@ -186,6 +200,9 @@ struct RtxParticleSystemDesc : GpuParticleSystemDesc {
     minScreenSize = 0.f;
     maxScreenSize = 0.f;
     screenSizeCoverage = 1.f;
+    spawnMaskSource = uint(ParticleSpawnMaskSource::Off);
+    spawnMaskResponse = uint(ParticleSpawnMaskResponse::Grayscale);
+    spawnMaskThreshold = 0.5f;
   }
 
   XXH64_hash_t calcHash() const {

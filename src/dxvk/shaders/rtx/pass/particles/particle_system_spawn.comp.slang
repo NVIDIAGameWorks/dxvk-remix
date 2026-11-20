@@ -30,6 +30,7 @@
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/concept/camera/camera.slangh"
 #include "rtx/pass/particles/particle_spawn_distribution.h"
+#include "rtx/pass/particles/particle_spawn_mask.h"
     
 layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT)
 StructuredBuffer<uint16_t> SpawnContextParticleMapping;
@@ -71,6 +72,7 @@ GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem 
   
   float3 positions[3]; 
   float3 prevPositions[3];
+  vec2 emitterTexcoords[3];
   float4 color = (spawnCtx.spawnMeshColorsIdx != BINDING_INDEX_INVALID) ? 0.0f : 1.0f;
   float4 uvMinMax = float4(0..xx, 1..xx);
   
@@ -132,6 +134,7 @@ GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem 
                         BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshTexcoordsIdx, baseSrcTexcoordOffset + 1));
     }
     
+    emitterTexcoords[i] = texcoord;
     if (particleSystem.desc.useSpawnTexcoords && spawnCtx.spawnMeshTexcoordsIdx != BINDING_INDEX_INVALID)
     {
       if (i == 0)
@@ -147,6 +150,40 @@ GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem 
     }
   }
   
+  if (particleSystem.desc.spawnMaskSource)
+  {
+    bool valid = spawnCtx.spawnMaskStatus;
+    float4 mask = spawnCtx.spawnMaskConstant;
+    if (spawnCtx.spawnMaskStatus == 2)
+    {
+      const vec2 rawUv = particleSpawnMaskInterpolateUv(emitterTexcoords[0], emitterTexcoords[1], emitterTexcoords[2], vec3(randomBary));
+      const vec2 maskUv = particleSpawnMaskUv(rawUv, spawnCtx.spawnMaskUvU, spawnCtx.spawnMaskUvV, spawnCtx.spawnMaskSprite, spawnCtx.spawnMaskAnimated != 0);
+      valid = all(isfinite(maskUv)) && spawnCtx.spawnMaskTextureIdx != BINDING_INDEX_INVALID && spawnCtx.spawnMaskSamplerIdx != BINDING_INDEX_INVALID;
+      if (valid)
+      {
+        mask = textures[nonuniformEXT(uint(spawnCtx.spawnMaskTextureIdx))].SampleLevel(samplers[nonuniformEXT(uint(spawnCtx.spawnMaskSamplerIdx))], maskUv, 0.f);
+      }
+    }
+    float luminance = 0.f;
+    if (particleSystem.desc.spawnMaskSource == 2 || particleSystem.desc.spawnMaskSource == 3)
+    {
+      float3 linearColor = mask.rgb;
+      if (spawnCtx.spawnMaskStatus != 2 || !spawnCtx.spawnMaskSrgb)
+      {
+        linearColor = gammaToLinear(max(mask.rgb, 0.f));
+      }
+      luminance = calcBt709Luminance(linearColor);
+    }
+    const float sample = randomFloat(uint2(randomSeed++, particleCb.frameIdx));
+    if (!valid || !particleSpawnMaskAccept(mask.a, luminance, particleSystem.desc.spawnMaskSource,
+        particleSystem.desc.spawnMaskResponse, particleSystem.desc.spawnMaskThreshold, sample))
+    {
+      newParticle.reset(particleSystem, float3(0.f), float3(0.f), float4(0.f), float4(0.f), randomFloat(uint2(randomSeed, particleCb.frameIdx)));
+      newParticle.rejectSpawn();
+      return newParticle;
+    }
+  }
+
   // Sample random point on triangle
   const float randSeed = randomFloat(uint2(randomSeed++, particleCb.frameIdx));
 
@@ -187,7 +224,9 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   
   const uint particleIdx = (threadIdx.x + particleSystem.spawnParticleOffset) % particleSystem.desc.maxNumParticles;
   const uint spawnCtxIdx = SpawnContextParticleMapping[threadIdx.x + particleCb.spawnContextMapOffset];
-  const bool shouldRespawn = Particles[particleIdx].isDead() || Particles[particleIdx].isSleeping();
+  const GpuParticle previous = Particles[particleIdx];
+  const bool shouldRespawn = particleSpawnMaskCanRespawn(particleSystem.desc.spawnMaskSource,
+    previous.isSpawnRejected(), previous.isDead(), previous.isSleeping(), float(previous.timeToLive));
   if (shouldRespawn)
   {
     const GpuParticle particle = respawn(particleIdx, spawnCtxIdx, particleSystem);

@@ -62,7 +62,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 12
+#define REMIXAPI_VERSION_PATCH 13
 
 
 // External
@@ -140,6 +140,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_WATER_SIM_INFO                       = 30,
     REMIXAPI_STRUCT_TYPE_WATER_DISTURBANCE_INFO               = 31,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT = 32,
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_MASK_EXT = 33,
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
     //       and only extend this enum by appending, never adjust the order of these 
     //       as that will break backwards compatibility.
@@ -644,6 +645,27 @@ extern "C" {
     float maxScreenSize;
     float screenSizeCoverage;
   } remixapi_InstanceInfoParticleScreenSizeEXT;
+
+  typedef enum remixapi_ParticleSpawnMaskSource {
+    REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_OFF = 0,
+    REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_ALPHA = 1,
+    REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_LUMINANCE = 2,
+    REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_ALPHA_TIMES_LUMINANCE = 3,
+  } remixapi_ParticleSpawnMaskSource;
+
+  typedef enum remixapi_ParticleSpawnMaskResponse {
+    REMIXAPI_PARTICLE_SPAWN_MASK_RESPONSE_GRAYSCALE = 0,
+    REMIXAPI_PARTICLE_SPAWN_MASK_RESPONSE_CUTOUT = 1,
+  } remixapi_ParticleSpawnMaskResponse;
+
+  // Evaluates one source-material mask sample per candidate birth. Rejection reduces the birth rate.
+  typedef struct remixapi_InstanceInfoParticleSpawnMaskEXT {
+    remixapi_StructType sType;
+    void* pNext;
+    remixapi_ParticleSpawnMaskSource maskSource;
+    remixapi_ParticleSpawnMaskResponse maskResponse;
+    float maskThreshold;
+  } remixapi_InstanceInfoParticleSpawnMaskEXT;
 
   typedef struct remixapi_InstanceInfoGpuInstancingEXT {
     remixapi_StructType       sType;

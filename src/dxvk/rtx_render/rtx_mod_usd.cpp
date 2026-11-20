@@ -1404,6 +1404,13 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   LIST_PARTICLE_SCREEN_SIZE_PROPERTIES(READ_PARTICLE_SCREEN_SIZE_PROPERTY)
 #undef READ_PARTICLE_SCREEN_SIZE_PROPERTY
 
+  ParticleSpawnMaskSource spawnMaskSource = ParticleSpawnMaskSource::Off;
+  ParticleSpawnMaskResponse spawnMaskResponse = ParticleSpawnMaskResponse::Grayscale;
+  _SafeGetParticlePrimvar(TfToken, id, spawnMaskSource, );
+  _SafeGetParticlePrimvar(TfToken, id, spawnMaskResponse, );
+  particleInfo.spawnMaskSource = uint32_t(spawnMaskSource);
+  particleInfo.spawnMaskResponse = uint32_t(spawnMaskResponse);
+  _SafeGetParticlePrimvar(float, id, spawnMaskThreshold, particleInfo.);
   _SafeGetParticlePrimvar(bool, id, hideEmitter, particleInfo.);
   _SafeGetParticlePrimvar(bool, id, enableMotionTrail, particleInfo.);
   _SafeGetParticlePrimvar(bool, id, useTurbulence, particleInfo.);

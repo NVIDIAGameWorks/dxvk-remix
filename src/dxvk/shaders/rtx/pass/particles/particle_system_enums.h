@@ -47,6 +47,9 @@ enum ParticleRandomFlipAxis : uint8_t {
   Both
 };
 
+enum class ParticleSpawnMaskSource : uint32_t { Off = 0, Alpha, Luminance, AlphaTimesLuminance };
+enum class ParticleSpawnMaskResponse : uint32_t { Grayscale = 0, Cutout };
+
 enum ParticleSpawnDistribution : uint8_t {
   ByTriangle = 0,
   BySurfaceArea = 1,

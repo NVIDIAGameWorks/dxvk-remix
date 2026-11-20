@@ -130,6 +130,7 @@ template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleObj
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleSystemEXT  > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleSpawnDistributionEXT > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleScreenSizeEXT > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT;
+template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleSpawnMaskEXT > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_MASK_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoGpuInstancingEXT   > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_CameraInfo                     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_CameraInfoParameterizedEXT     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
@@ -157,6 +158,7 @@ using InstanceInfoBlend = bridge_util::Serializable<remixapi_InstanceInfoBlendEX
 using InstanceInfoTransforms = bridge_util::Serializable<remixapi_InstanceInfoBoneTransformsEXT,false>;
 using InstanceInfoParticleSystem = bridge_util::Serializable<remixapi_InstanceInfoParticleSystemEXT, false>;
 using InstanceInfoParticleSpawnDistribution = bridge_util::Serializable<remixapi_InstanceInfoParticleSpawnDistributionEXT, true>;
+using InstanceInfoParticleSpawnMask = bridge_util::Serializable<remixapi_InstanceInfoParticleSpawnMaskEXT, true>;
 using InstanceInfoGpuInstancing = bridge_util::Serializable<remixapi_InstanceInfoGpuInstancingEXT, false>;
 
 // Light Info

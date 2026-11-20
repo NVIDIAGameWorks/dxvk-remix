@@ -988,6 +988,34 @@ class "ParticleSystemAPI" (
             allowedTokens = ["ByTriangle", "BySurfaceArea"]
         )
 
+    uniform token primvars:particle:spawnMaskSource = "Off" (
+            doc = "Reject candidate births using the emitter's source material. Alpha reads raw source alpha. Luminance uses normalized linear-color brightness. Both multiplies alpha and luminance. One sample is evaluated per birth; increase the spawn rate manually to compensate. Unsupported sources or texture references without resident descriptors suppress births until valid. Resolver-empty references use material constants."
+            displayGroup = "Spawn"
+            displayName = "Birth Mask Source"
+            allowedTokens = ["Off", "Alpha", "Luminance", "AlphaTimesLuminance"]
+        )
+
+    uniform token primvars:particle:spawnMaskResponse = "Grayscale" (
+            doc = "Grayscale accepts births proportionally to the mask value. Cutout accepts nonzero values at or above the threshold. Rejected births are not retried."
+            displayGroup = "Spawn"
+            displayName = "Birth Mask Response"
+            allowedTokens = ["Grayscale", "Cutout"]
+        )
+
+    float primvars:particle:spawnMaskThreshold = 0.5 (
+            doc = "Normalized cutoff for the Cutout response. Black always rejects. The Grayscale response ignores this value."
+            displayGroup = "Spawn"
+            displayName = "Birth Mask Threshold"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                    }
+                }
+            }
+        )
+
     bool primvars:particle:useSpawnTexcoords = false (
             doc = "Use the texture coordinates of the emitter mesh when sampling spawn positions or velocities."
             displayGroup = "Spawn"

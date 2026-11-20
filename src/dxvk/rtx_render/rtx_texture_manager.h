@@ -24,6 +24,7 @@
 
 #include <mutex>
 #include <queue>
+#include <unordered_map>
 #include <vector>
 
 #include "../../util/thread.h"
@@ -121,6 +122,9 @@ namespace dxvk {
     }
 
     void prepareSamplerFeedback(DxvkContext* ctx);
+    // Retain non-rendering consumers through garbage collection and seed LOD-zero feedback after the frame reset.
+    void requestFullDetailFeedback(uint32_t textureIndex, uint16_t stamp);
+    void releaseFullDetailFeedback();
     void copySamplerFeedbackToHost(DxvkContext* ctx);
 
     /**
@@ -191,6 +195,7 @@ namespace dxvk {
     dxvk::mutex m_assetHashToTextures_mutex;
 
     SamplerFeedback m_sf = {};
+    std::unordered_map<uint32_t, uint16_t> m_fullDetailFeedbackTextures;
     bool m_wasTextureBudgetPressure = false;
 
     RTX_OPTION("rtx.texturemanager", bool, showProgress, false, "Show texture loading progress in the HUD.");
