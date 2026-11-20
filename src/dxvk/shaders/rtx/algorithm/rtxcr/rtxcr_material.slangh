@@ -41,6 +41,22 @@ SssDiffusionProfileResult createEmptySssDiffusionProfileResult()
   return sssDiffusionProfileResult;
 }
 
+// Subsurface rays look for the shaded surface's own geometry. View-model and player-model instances carry their
+// own instance mask bits instead of OBJECT_MASK_OPAQUE, so the shaded surface's dynamic bits are added, as the
+// direct lighting visibility rays do.
+uint8_t sssRayMask(const GeometryFlags geometryFlags)
+{
+  return OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+}
+
+// View-model geometry is shrunk around the camera, so its subsurface distances, authored for the original size,
+// are shrunk with it. The shaded surface's own flag is used: GeometryFlags.isViewModel accumulates over the PSR
+// path, so a world-space surface seen through view-model glass would otherwise be scaled too.
+float sssDistanceScale(const uint surfaceIndex)
+{
+  return surfaces[surfaceIndex].isViewModel ? cb.viewModelDistanceScale : 1.0f;
+}
+
 SssTracingResult traceSssRay(
   const Ray sssSampleRay,
   const uint8_t rayMask,
@@ -123,10 +139,11 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
   subsurfaceMaterialData.scatteringColor = float3(subsurfaceMaterial.singleScatteringAlbedo);
   // For diffusion-profile materials, measurementDistance is a reused field containing the radius scale,
   // rather than a physical measurement distance; increasing it produces deeper subsurface scattering.
-  subsurfaceMaterialData.scale = subsurfaceMaterial.measurementDistance * cb.sssArgs.diffusionProfileScale;
+  const float distanceScale = sssDistanceScale(primarySurfaceIndex);
+  subsurfaceMaterialData.scale = subsurfaceMaterial.measurementDistance * cb.sssArgs.diffusionProfileScale * distanceScale;
   subsurfaceMaterialData.g = subsurfaceMaterial.volumetricAnisotropy;
 
-  const float maxSampleRadius = float(subsurfaceMaterial.maxSampleRadius) * cb.metersToWorldUnitScale;
+  const float maxSampleRadius = float(subsurfaceMaterial.maxSampleRadius) * cb.metersToWorldUnitScale * distanceScale;
 
   /// Create interaction
 
@@ -158,9 +175,11 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     Ray sssSampleRay;
     sssSampleRay.origin = subsurfaceSample.samplePosition;
     sssSampleRay.direction = -diskNormalWorldSpace; // Shooting a ray from sample disk towards the surface
-    sssSampleRay.tMax = max(maxSampleRadius * 2.0f, 0.1f);
+    // The query length floor shrinks with the surface so a small view model does not reach unrelated geometry of the
+    // same material.
+    sssSampleRay.tMax = max(maxSampleRadius * 2.0f, 0.1f * distanceScale);
 
-    const SssTracingResult sssTracingResult = traceSssRay(sssSampleRay, OBJECT_MASK_OPAQUE, RAY_FLAG_CULL_BACK_FACING_TRIANGLES);
+    const SssTracingResult sssTracingResult = traceSssRay(sssSampleRay, sssRayMask(geometryFlags), RAY_FLAG_CULL_BACK_FACING_TRIANGLES);
 
     // Skip this sample if the ray misses or hits a different material than the center material.
     // tMax restricts the ray distance to a local region, mitigating the risk of sampling other meshes.
@@ -316,7 +335,7 @@ float3 evalSingleScatteringTransmission(
     const float3 hitPos = subsurfaceInteraction.centerPosition;
 
     const Ray transmissionRay = rayCreateDirection(minimalRayInteraction, minimalSurfaceInteraction, viewRay, refractedRayDirection, true);
-    SssTracingResult transmissionTracingResult = traceSssRay(transmissionRay, OBJECT_MASK_OPAQUE, RAY_FLAG_NONE);
+    SssTracingResult transmissionTracingResult = traceSssRay(transmissionRay, sssRayMask(geometryFlags), RAY_FLAG_NONE);
 
     // Note: In theory, we don't need to check hit because the model should be water tight, which is nessary for our SSS algorithm.
     //       But we still check here for extra security just in case the model is not water tight or we suffer on self-intersections.
@@ -432,7 +451,7 @@ float3 evalSingleScatteringTransmission(
       singleScatteringRay.direction = scatteringDirection;
       singleScatteringRay.tMax = floatMax;
 
-      SssTracingResult singleScatteringTracingResult = traceSssRay(singleScatteringRay, OBJECT_MASK_OPAQUE, RAY_FLAG_NONE);
+      SssTracingResult singleScatteringTracingResult = traceSssRay(singleScatteringRay, sssRayMask(geometryFlags), RAY_FLAG_NONE);
 
       if (!singleScatteringTracingResult.hasHit)
       {

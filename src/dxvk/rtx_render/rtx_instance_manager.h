@@ -450,6 +450,7 @@ public:
 
   const std::array<Matrix3, 2>& getEyeShadingToWorld() const { return m_eyeShadingToWorld; }
   const std::array<Matrix3, 2>& getEyeWorldToShading() const { return m_eyeWorldToShading; }
+  float getViewModelDistanceScale() const { return m_viewModelDistanceScale; }
 
   void createPlayerModelVirtualInstances(Rc<DxvkContext> ctx, const CameraManager& cameraManager, const RayPortalManager& rayPortalManager);
 
@@ -478,6 +479,8 @@ private:
   std::array<Matrix3, 2> m_eyeShadingToWorld;
   std::array<Matrix3, 2> m_eyeWorldToShading;
   bool m_hasViewModelEyeCorrection = false;
+  // Mean linear scale of this frame's view-model perspective correction (1 without one).
+  float m_viewModelDistanceScale = 1.0f;
   std::vector<RtInstance*> m_playerModelInstances;
   uint32_t m_playerModelInstancesFrameId = kInvalidFrameIndex;
   std::vector<IntersectionBillboard> m_billboards;

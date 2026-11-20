@@ -365,7 +365,8 @@ struct RtSurface {
     static_assert(static_cast<uint32_t>(TexGenMode::Count) <= 4);
     textureFlags |= ((static_cast<uint32_t>(texgenMode) & 0x3) << 17);
     textureFlags |= (static_cast<uint32_t>(alphaBlendDissolve) & alphaBlendDissolveMask) << alphaBlendDissolveShift;
-    // textureFlags bits 22-30 unused
+    textureFlags |= isViewModel ? (1 << 22) : 0;
+    // textureFlags bits 23-30 unused
 
     writeGPUHelper(data, offset, textureFlags);
 
@@ -431,6 +432,8 @@ struct RtSurface {
   bool isMotionBlurMaskOut = false;
   bool skipSurfaceInteractionSpritesheetAdjustment = false;
   AlphaBlendDissolve alphaBlendDissolve = AlphaBlendDissolve::None;
+  // Set on view-model instances, which the view-model perspective correction shrinks around the camera.
+  bool isViewModel = false;
 
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
   RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;

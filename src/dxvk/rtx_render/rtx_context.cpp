@@ -1348,6 +1348,7 @@ namespace dxvk {
     constants.sssTransmissionSingleScatteringSampleCount = RtxOptions::SubsurfaceScattering::transmissionSingleScatteringSampleCount();
     constants.enableTransmissionDiffusionProfileCorrection = RtxOptions::SubsurfaceScattering::enableTransmissionDiffusionProfileCorrection();
     constants.metersToWorldUnitScale = RtxOptions::getMeterToWorldUnitScale();
+    constants.viewModelDistanceScale = getSceneManager().getInstanceManager().getViewModelDistanceScale();
     constants.enableHeuristicSingleScatteringTransmission = RtxOptions::SubsurfaceScattering::enableHeuristicSingleScatteringTransmission();
     constants.sssArgs.diffusionProfileDebuggingPixel = u16vec2 {
       static_cast<uint16_t>(RtxOptions::SubsurfaceScattering::diffusionProfileDebugPixelPosition().x),
