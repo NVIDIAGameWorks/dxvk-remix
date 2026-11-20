@@ -721,6 +721,10 @@ namespace dxvk {
                args.minValue = 0.0f, args.maxValue = 1.0f, args.onChangeCallback = &resolveTransparencyThresholdOnChange);
     RTX_OPTION_ARGS("rtx", float, resolveOpaquenessThreshold, 254.0f / 255.0f, "A threshold for which any opacity value above is considered totally opaque.",
                args.minValue = 0.0f, args.maxValue = 1.0f);
+    RTX_OPTION("rtx", bool, enablePointSampledOpacityInSecondaryRays, true,
+               "Enables sampling alpha tested and alpha blended surfaces at the full resolution of their textures in indirect and visibility rays, rather than at the mip level of the ray cone's footprint.\n"
+               "A footprint wider than a texel averages a cutout's solid parts and gaps into one opacity, so thin cutouts such as chain-link fences block all or none of the light passing through them, or stop every indirect ray that crosses them. The footprint, and with it the error, grows with distance from the camera.\n"
+               "Primary rays keep the cone footprint, so cutouts look as the game draws them.");
 
     // PSR Options
     RTX_OPTION("rtx", bool, enablePSRR, true,

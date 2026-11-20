@@ -381,8 +381,22 @@ float resolveVertex<T: IBasePayloadState>(
     const OpaqueSurfaceMaterial material = opaqueSurfaceMaterialCreate(surfaceMaterials[surface.surfaceMaterialIndex]);
     computePreviousTextureBasis = (material.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET) != 0;
   }
+
+  // Note: Secondary rays sample partially transparent surfaces at full texture resolution,
+  // so that they pass through a cutout's gaps and hit its solid parts rather than resolving one averaged opacity.
+  // The whole material uses this footprint, as its albedo and base reflectivity are premultiplied by its opacity.
+#ifdef RAY_TRACING_PRIMARY_RAY
+  const uint footprintMode = kFootprintFromRayDirection;
+#else
+  const bool usePointFootprint =
+    cb.enablePointSampledOpacityInSecondaryRays &&
+    rayInteraction.materialType == surfaceMaterialTypeOpaque &&
+    !surface.isFullyOpaque;
+  const uint footprintMode = usePointFootprint ? kFootprintPoint : kFootprintFromRayDirection;
+#endif
+
   surfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray,
-    false, kFootprintFromRayDirection, computePreviousTextureBasis);
+    false, footprintMode, computePreviousTextureBasis);
 
   // Process user clip planes and view distance
 

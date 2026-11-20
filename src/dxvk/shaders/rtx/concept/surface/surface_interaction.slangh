@@ -36,6 +36,8 @@ static const uint kFootprintFromRayOrigin = 0u;
 static const uint kFootprintFromRayDirection = 1u;
 static const uint kFootprintFromTextureCoordDiff = 2u;
 static const uint kFootprintFromRayOriginClamped = 3u;
+// Samples every texture at its full resolution, through zero texture gradients.
+static const uint kFootprintPoint = 4u;
 
 static const bool SurfaceGenerateTangents = true;
 static const bool SurfaceIgnoreTangents = false;
@@ -715,14 +717,19 @@ SurfaceInteraction surfaceInteractionCreateImpl<let GenerateTangents : bool, let
     // Compute texture gradients
     // Note: This is done here as it depends on the triangle normal and texture coordinates being calculated first
 
-    // Note: Non-flipped world space triangle normal passed in to be consistent with the calculations done internally (rather
-    // than worrying about if the flipped vector could break it)
-    if (footprintMode != kFootprintFromTextureCoordDiff)
+    if (footprintMode == kFootprintPoint)
+    {
+      surfaceInteraction.textureGradientX = vec2(0.0f);
+      surfaceInteraction.textureGradientY = vec2(0.0f);
+    }
+    else if (footprintMode != kFootprintFromTextureCoordDiff)
     {
       const vec3 positionOffset = surfaceInteraction.position - ray.origin;
       const vec3 direction = footprintMode == kFootprintFromRayDirection ? ray.direction : normalize(positionOffset);
       const float coneRadius = footprintMode == kFootprintFromRayDirection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
 
+      // Note: Non-flipped world space triangle normal passed in to be consistent with the calculations done internally (rather
+      // than worrying about if the flipped vector could break it)
       computeAnisotropicEllipseAxes(
         hitPosition, triangleNormal, worldTwoTriangleArea, direction,
         coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
