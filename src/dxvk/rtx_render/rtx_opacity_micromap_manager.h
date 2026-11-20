@@ -27,6 +27,7 @@
 #include "rtx_option.h"
 #include "rtx_common_object.h"
 #include "rtx_staging.h"
+#include <atomic>
 #include <vector>
 #include <list>
 #include <unordered_map>
@@ -186,8 +187,12 @@ namespace dxvk {
     Rc<DxvkBuffer> opacityMicromapTriangleIndexBuffer;
     Rc<DxvkBuffer> opacityMicromapBuffer;
     VkMicromapEXT opacityMicromap = VK_NULL_HANDLE;      // Built micromap handle
+    const XXH64_hash_t sourceHash;                       // Source hash of the cache item these buffers were built for
 
-    explicit DxvkOpacityMicromap(DxvkDevice& device);
+    // Counts the BLASes built with this micromap, which keep it alive until they are rebuilt or destroyed.
+    std::atomic<uint32_t> blasPinCount { 0 };
+
+    DxvkOpacityMicromap(DxvkDevice& device, XXH64_hash_t sourceHash);
     ~DxvkOpacityMicromap();
 
   private:
@@ -390,8 +395,16 @@ namespace dxvk {
     // it binds it as well updates VK instance flags in the instance.
     // Returns bound opacity micromap source hash
     // Returns kEmptyHash otherwise
+    // If outBoundBuffer is non-null, it is set to a strong reference to the bound OMM's buffers
+    // on success, or cleared to nullptr otherwise. The caller must keep that reference alive for
+    // as long as the BLAS built from targetGeometry is alive.
     XXH64_hash_t tryBindOpacityMicromap(Rc<DxvkContext> ctx, const RtInstance& instance, uint32_t billboardIndex, 
-                                        VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
+                                        VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager,
+                                        Rc<DxvkOpacityMicromap>* outBoundBuffer = nullptr);
+
+    // Marks the cache items of the given bound micromaps as used this frame.
+    // A BLAS reused without rebinding calls this, so that LRU eviction does not treat its micromaps as unused.
+    void markUsed(const std::vector<Rc<DxvkOpacityMicromap>>& boundOmms);
 
     // Called once per frame to build pending Opacity Micromap items in Opacity Micromap Manager
     void buildOpacityMicromaps(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId);
@@ -443,8 +456,9 @@ namespace dxvk {
     // meaning affected BLASes should be rebuilt to bind them.
     bool hasNewlyBuiltOmms() const { return m_hasNewlyBuiltOmms; }
 
-    // Returns true if OMM option changes require all BLASes to be rebuilt
-    // (e.g. binding or building options toggled).  Cleared after reading.
+    // Returns true if all BLASes need to be rebuilt, because OMM options changed
+    // or because cache items that BLASes may be built with were destroyed.
+    // Clears the flag.
     bool consumeNeedsBlasRebuild() {
       bool val = m_needsBlasRebuild;
       m_needsBlasRebuild = false;
@@ -484,7 +498,8 @@ namespace dxvk {
     };
     friend class CachedSourceData;
 
-    XXH64_hash_t bindOpacityMicromap(Rc<DxvkContext> ctx, const RtInstance& instance, uint32_t billboardIndex, VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
+    XXH64_hash_t bindOpacityMicromap(Rc<DxvkContext> ctx, const RtInstance& instance, uint32_t billboardIndex, VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager,
+                                     Rc<DxvkOpacityMicromap>* outBoundBuffer = nullptr);
 
     void generateInstanceOmmRequests(RtInstance& instance, const InstanceManager& instanceManager, std::vector<OmmRequest>& ommRequests);
 
@@ -613,7 +628,8 @@ namespace dxvk {
     // the newly-built OMMs get bound to BLASes.
     bool m_hasNewlyBuiltOmms = false;
 
-    // Set when OMM option changes require all BLASes to be rebuilt.
+    // Set when OMM option changes require all BLASes to be rebuilt,
+    // or when a cache item that has been bound is destroyed, so BLASes release its micromap.
     bool m_needsBlasRebuild = false;
 
     // Generation counter incremented on clear().  Invalidates stale

@@ -226,10 +226,14 @@ namespace dxvk {
 
     VkQueryPool queryPool = VK_NULL_HANDLE;
 
-    if (m_vkd->vkCreateQueryPool(m_vkd->device(), &info, nullptr, &queryPool)) {
-      Logger::err(str::format("DXVK: Failed to create query pool (", m_queryType, "; ", m_queryPoolSize, ")"));
+    // NV-DXVK start: Log the result of a failed query pool creation
+    VkResult result = m_vkd->vkCreateQueryPool(m_vkd->device(), &info, nullptr, &queryPool);
+
+    if (result != VK_SUCCESS) {
+      Logger::err(str::format("DXVK: Failed to create query pool (", m_queryType, "; ", m_queryPoolSize, "): ", result));
       return;
     }
+    // NV-DXVK end
 
     m_pools.push_back(queryPool);
 
@@ -337,6 +341,13 @@ namespace dxvk {
     query->addQueryHandle(handle);
     query->end();
 
+    // NV-DXVK start: Skip recording when no query could be allocated
+    // A query without a handle reads back as available with zeroed data.
+    if (!handle.queryPool) {
+      return;
+    }
+    // NV-DXVK end
+
     cmd->cmdResetQuery(
       handle.queryPool,
       handle.queryId,
@@ -380,6 +391,14 @@ namespace dxvk {
     const Rc<DxvkGpuQuery>&     query) {
     DxvkGpuQueryHandle handle = m_pool->allocQuery(query->type());
     
+    // NV-DXVK start: Skip recording when no query could be allocated
+    // The empty current handle makes endSingleQuery skip the matching end.
+    if (!handle.queryPool) {
+      query->addQueryHandle(handle);
+      return;
+    }
+    // NV-DXVK end
+
     cmd->cmdResetQuery(
       handle.queryPool,
       handle.queryId,
@@ -407,6 +426,12 @@ namespace dxvk {
     const Rc<DxvkGpuQuery>&     query) {
     DxvkGpuQueryHandle handle = query->handle();
     
+    // NV-DXVK start: Skip recording when no query could be allocated
+    if (!handle.queryPool) {
+      return;
+    }
+    // NV-DXVK end
+
     if (query->isIndexed()) {
       cmd->cmdEndQueryIndexed(
         handle.queryPool,

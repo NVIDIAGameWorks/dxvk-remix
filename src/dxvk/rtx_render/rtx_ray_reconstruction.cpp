@@ -144,6 +144,13 @@ namespace dxvk {
       mRecreate = false;
     }
 
+    // This frame's output stays unwritten, and the switch takes effect on the next frame.
+    if (!m_rayReconstructionContext) {
+      Logger::err("[RTX] DLSS-RR context creation failed. Switching to TAA-U.");
+      RtxOptions::upscalerType.setDeferred(UpscalerType::TAAU);
+      return;
+    }
+
     SceneManager& sceneManager = device()->getCommon()->getSceneManager();
     DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();
 
@@ -409,12 +416,19 @@ namespace dxvk {
     if (!m_rayReconstructionContext) {
       m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
     }
-    if (m_rayReconstructionContext) {
-      const auto optimalSettings = m_rayReconstructionContext->queryOptimalSettings(displaySize, perfQuality);
 
-      mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
-      mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
+    NGXRayReconstructionContext::QuerySettings optimalSettings;
+    if (m_rayReconstructionContext && m_rayReconstructionContext->queryOptimalSettings(displaySize, perfQuality, optimalSettings)) {
+      mInputSize[0] = optimalSettings.optimalRenderSize[0];
+      mInputSize[1] = optimalSettings.optimalRenderSize[1];
+    } else {
+      // The display size is always a valid DLSS-RR input size.
+      mInputSize[0] = displaySize[0];
+      mInputSize[1] = displaySize[1];
     }
+
+    outRenderSize[0] = mInputSize[0];
+    outRenderSize[1] = mInputSize[1];
 
     mDLSSOutputSize[0] = displaySize[0];
     mDLSSOutputSize[1] = displaySize[1];
@@ -446,7 +460,8 @@ namespace dxvk {
         break;
       }
 
-      auto optimalSettings = m_rayReconstructionContext->queryOptimalSettings(mInputSize, perfQuality);
+      NGXRayReconstructionContext::QuerySettings optimalSettings;
+      m_rayReconstructionContext->queryOptimalSettings(mInputSize, perfQuality, optimalSettings);
 
       m_rayReconstructionContext->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, dlssdModel, perfQuality);
     }

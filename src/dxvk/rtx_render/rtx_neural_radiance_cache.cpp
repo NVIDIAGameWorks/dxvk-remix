@@ -27,6 +27,7 @@
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx_render/rtx_sparse_rendering.h"
+#include "rtx_render/rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_render/rtx_ray_reconstruction.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_context.h"
@@ -593,7 +594,9 @@ namespace dxvk {
 
     RtxPass::onFrameBegin(ctx, frameBeginCtx);
 
-    if (!isActive()) {
+    // Checks the base state, so a failed context is re-created while the integration mode is still NRC.
+    // Hiding isActive() is a stopgap specific to NRC (see the header).
+    if (!RtxPass::isActive()) {
       return;
     }
 
@@ -608,7 +611,8 @@ namespace dxvk {
     const nrc_uint2 queryDimensions = calculateQueryDimensions(resources, renderDimensions, queryPathsAreCompacted);
 
     const bool reinitializeNrcContext =
-      m_nrcCtx->isDebugBufferRequired() != NrcOptions::s_nrcDebugBufferIsRequired
+      m_hasContextFailed
+      || m_nrcCtx->isDebugBufferRequired() != NrcOptions::s_nrcDebugBufferIsRequired
       || m_delayedEnableCustomNetworkConfig != NrcCtxOptions::enableCustomNetworkConfig()
       // [REMIX-3810] WAR to fully recreate NRC when resolution changes to avoid occasional corruption
       // when changing resolutions
@@ -626,9 +630,12 @@ namespace dxvk {
       m_nrcCtx = new NrcContext(*ctx->getDevice(), nrcContextCfg);
 
       if (m_nrcCtx->initialize() != nrc::Status::OK) {
-        Logger::err(str::format("[RTX Neural Radiance Cache] Failed to initialize NRC context"));
+        Logger::err("[RTX Neural Radiance Cache] Failed to initialize NRC context.");
+        handleContextFailure(ctx->getDevice().ptr());
         return;
       }
+
+      m_hasContextFailed = false;
     }
 
     bool hasNrcSetupSucceeded = true;
@@ -645,12 +652,7 @@ namespace dxvk {
         "  Max supported resolution: ", NRC_MAX_RAYTRACING_RESOLUTION_X, " x ", NRC_MAX_RAYTRACING_RESOLUTION_Y, "\n"
         "  Requested resolution: ", frameBeginCtx.downscaledExtent.width, " x ", frameBeginCtx.downscaledExtent.height)));
 
-      // Fallback to Basic mode if NRC setup failed.
-      // Note: it would be preferable to fallback to ReSTIRGI, but that would require delaying that change to the beginning of the next frame
-      // to ensure consistent mode state in the frame. That is something to consider in the future. For now this will do for the sake of simpler logic
-      Logger::warn(str::format("[RTX Neural Radiance Cache] Neural Radiance Cache per frame setup failed. Switching to importance sampled indirect illumination mode."));
-      RtxOptions::integrateIndirectMode.setDeferred(IntegrateIndirectMode::ImportanceSampled);
-      
+      handleContextFailure(ctx->getDevice().ptr());
       return;
     }
 
@@ -800,8 +802,12 @@ namespace dxvk {
       }
     }
     
-    bool hasCacheBeenReset;
-    m_nrcCtx->onFrameBegin(*ctx, *m_nrcCtxSettings, nrcFrameSettings, &hasCacheBeenReset);
+    bool hasCacheBeenReset = false;
+    if (!m_nrcCtx->onFrameBegin(*ctx, *m_nrcCtxSettings, nrcFrameSettings, &hasCacheBeenReset)) {
+      Logger::err("[RTX Neural Radiance Cache] Failed to configure or begin the NRC frame.");
+      handleContextFailure(ctx->getDevice().ptr());
+      return;
+    }
 
     // Propagate the cache reset, since the runtime queries this after the onFrameBegin calls
     if (hasCacheBeenReset) {
@@ -846,19 +852,16 @@ namespace dxvk {
     m_isActiveForStats.store(false, std::memory_order_relaxed);
     m_numberOfTrainingRecords.store(0, std::memory_order_relaxed);
 
-    // Fallback to Importance Sampled mode if NRC setup failed.
-    // Note: it would be preferable to fallback to ReSTIRGI, but that would require delaying that change to the beginning of the next frame
-    // to ensure consistent mode state in the frame. That is something to consider in the future. For now this will do for sake of simpler logic
-
+    // RtxPass::onFrameBegin deactivates the pass when this fails, so only the mode needs to change.
     if (!checkIsSupported(ctx->getDevice().ptr())) {
-      ONCE(Logger::warn("[RTX Neural Radiance Cache] Neural Radiance Cache is not supported. Switching to importance sampled indirect illumination mode."));
-      RtxOptions::integrateIndirectMode.setDeferred(IntegrateIndirectMode::ImportanceSampled);
+      ONCE(Logger::warn("[RTX Neural Radiance Cache] Neural Radiance Cache is not supported."));
+      selectFallbackMode(ctx->getDevice().ptr());
       return false;
     }
 
     if (!initialize(*ctx->getDevice())) {
-      Logger::err("[RTX Neural Radiance Cache] Neural Radiance Cache failed to get initialized. Switching to importance sampled indirect illumination mode.");
-      RtxOptions::integrateIndirectMode.setDeferred(IntegrateIndirectMode::ImportanceSampled);
+      Logger::err("[RTX Neural Radiance Cache] Neural Radiance Cache failed to get initialized.");
+      selectFallbackMode(ctx->getDevice().ptr());
       return false;
     }
 
@@ -873,6 +876,20 @@ namespace dxvk {
     m_numberOfTrainingRecords.store(0, std::memory_order_relaxed);
     m_nrcCtx = nullptr;
     m_numberOfTrainingRecordsStaging = nullptr;
+    m_hasContextFailed = false;
+  }
+
+  void NeuralRadianceCache::handleContextFailure(const DxvkDevice* device) {
+    // The failed context is destroyed on deactivation rather than here,
+    // since this frame's unsubmitted command list may still reference it.
+    m_hasContextFailed = true;
+    selectFallbackMode(device);
+  }
+
+  void NeuralRadianceCache::selectFallbackMode(const DxvkDevice* device) {
+    const bool isSharcSupported = SpatiallyHashedRadianceCache::checkIsSupported(device);
+    Logger::warn(str::format("[RTX Neural Radiance Cache] Switching indirect illumination mode to ", isSharcSupported ? "SHaRC." : "ReSTIR GI."));
+    RtxOptions::integrateIndirectMode.setDeferred(isSharcSupported ? IntegrateIndirectMode::SHaRC : IntegrateIndirectMode::ReSTIRGI);
   }
 
   void NeuralRadianceCache::createDownscaledResource(

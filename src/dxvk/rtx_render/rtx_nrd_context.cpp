@@ -1034,6 +1034,12 @@ namespace dxvk {
   }
 
   void NRDContext::release() {
+    // The pipelines are destroyed directly rather than through DXVK's lifetime tracking,
+    // so submitted work that uses them must finish first.
+    if (!m_computePipelines.empty()) {
+      device()->waitForIdle();
+    }
+
     destroyResources();
     destroyPipelines();
     m_cbData = nullptr;

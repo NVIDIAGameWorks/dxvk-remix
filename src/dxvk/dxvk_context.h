@@ -95,6 +95,17 @@ namespace dxvk {
      */
     Rc<DxvkCommandList> endRecording();
 
+    // NV-DXVK start: Discard a partially recorded command list
+    /**
+     * \brief Discards the active command list
+     *
+     * Drops the active command list and all pending barriers without
+     * submitting them. Use this after an exception interrupts recording,
+     * since pending barriers can reference resources that no longer exist.
+     */
+    void discardRecording();
+    // NV-DXVK end
+
     /**
      * \brief Flushes command buffer
      * 

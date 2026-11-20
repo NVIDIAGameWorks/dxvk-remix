@@ -122,6 +122,16 @@ namespace dxvk
 
       return ViewToResourceVK(tex->view, isUAV);
     }
+
+    // Returns no context when NGX did not provide capability parameters.
+    template <typename T>
+    std::unique_ptr<T> createFeatureContext(DxvkDevice* pDevice) {
+      std::unique_ptr<T> pContext = std::make_unique<T>(pDevice);
+      if (!pContext->hasParameters()) {
+        return nullptr;
+      }
+      return pContext;
+    }
   }
 
   void NVSDK_CONV NVSDK_NGX_AppLogCallback(const char* message, NVSDK_NGX_Logging_Level loggingLevel, NVSDK_NGX_Feature sourceComponent) {
@@ -349,7 +359,7 @@ namespace dxvk
       return nullptr;
     }
 
-    return std::make_unique<NGXDLSSContext>(m_device);
+    return createFeatureContext<NGXDLSSContext>(m_device);
   }
 
   std::unique_ptr<NGXRayReconstructionContext> NGXContext::createRayReconstructionContext() {
@@ -363,7 +373,7 @@ namespace dxvk
       return nullptr;
     }
 
-    return std::make_unique<NGXRayReconstructionContext>(m_device);
+    return createFeatureContext<NGXRayReconstructionContext>(m_device);
   }
 
   std::unique_ptr<NGXDLFGContext> NGXContext::createDLFGContext() {
@@ -377,7 +387,7 @@ namespace dxvk
       return nullptr;
     }
 
-    return std::make_unique<NGXDLFGContext>(m_device);
+    return createFeatureContext<NGXDLFGContext>(m_device);
   }
 
   std::unique_ptr<NGXNeuralRenderingContext> NGXContext::createDlssNeuralRenderingContext() {
@@ -391,7 +401,7 @@ namespace dxvk
       return nullptr;
     }
 
-    return std::make_unique<NGXNeuralRenderingContext>(m_device);
+    return createFeatureContext<NGXNeuralRenderingContext>(m_device);
   }
 
   bool NGXContext::checkDLSSSupport(NVSDK_NGX_Parameter* params) {
@@ -658,7 +668,7 @@ namespace dxvk
     }
   }
 
-  NGXDLSSContext::OptimalSettings NGXDLSSContext::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const
+  bool NGXDLSSContext::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality, OptimalSettings& outSettings) const
   {
     ScopedCpuProfileZone();
     OptimalSettings settings;
@@ -674,10 +684,11 @@ namespace dxvk
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Querying optimal settings failed: ", resultToString(result)));
-      return settings;
+      return false;
     }
 
-    return settings;
+    outSettings = settings;
+    return true;
   }
 
   bool NGXDLSSContext::evaluateDLSS(
@@ -816,7 +827,7 @@ namespace dxvk
   }
 
 
-  NGXRayReconstructionContext::QuerySettings NGXRayReconstructionContext::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const {
+  bool NGXRayReconstructionContext::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality, QuerySettings& outSettings) const {
     ScopedCpuProfileZone();
     QuerySettings settings;
     // Note: Deprecated, should not be used but still must be passed into the query function.
@@ -831,10 +842,11 @@ namespace dxvk
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Querying optimal settings failed: ", resultToString(result)));
-      return settings;
+      return false;
     }
 
-    return settings;
+    outSettings = settings;
+    return true;
   }
 
   bool NGXRayReconstructionContext::evaluateRayReconstruction(

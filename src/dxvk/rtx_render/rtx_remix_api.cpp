@@ -1057,6 +1057,44 @@ namespace {
     return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
   }
 
+  // Returns true when the surface's counts and data pointers can form a triangle list.
+  bool validateSurface(const remixapi_MeshInfoSurfaceTriangles& src) {
+    constexpr uint64_t kMaxCount = std::numeric_limits<uint32_t>::max();
+    if (src.vertices_count == 0 || src.vertices_values == nullptr || src.vertices_count >= kMaxCount) {
+      return false;
+    }
+    if (src.indices_count >= kMaxCount) {
+      return false;
+    }
+    if (src.indices_count > 0 && src.indices_values == nullptr) {
+      return false;
+    }
+    if (src.indices_count == 0 && src.vertices_count % 3 != 0) {
+      return false;
+    }
+    if (src.skinning_hasvalue) {
+      const remixapi_MeshInfoSkinning& skinning = src.skinning_value;
+      if (skinning.bonesPerVertex > REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
+        return false;
+      }
+      if (skinning.blendWeights_count > 0 && skinning.blendWeights_values == nullptr) {
+        return false;
+      }
+
+      // Skinning reads one tuple of bonesPerVertex weights and indices for every vertex.
+      if (skinning.bonesPerVertex > 0) {
+        const uint64_t tupleCount = src.vertices_count * uint64_t(skinning.bonesPerVertex);
+        if (skinning.blendWeights_count < tupleCount || skinning.blendWeights_values == nullptr) {
+          return false;
+        }
+        if (skinning.blendIndices_count < tupleCount || skinning.blendIndices_values == nullptr) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   // Allocates GPU buffers for a single surface and builds its RasterGeometry.
   dxvk::RasterGeometry allocateSurfaceGeometry(
     dxvk::D3D9DeviceEx* device,
@@ -1216,6 +1254,14 @@ namespace {
     auto handle = reinterpret_cast<remixapi_MeshHandle>(info->hash);
     if (!handle) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    if (info->surfaces_count > 0 && info->surfaces_values == nullptr) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    for (size_t i = 0; i < info->surfaces_count; i++) {
+      if (!validateSurface(info->surfaces_values[i])) {
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+      }
     }
 
     auto allocatedSurfaces = std::vector<dxvk::RasterGeometry> {};

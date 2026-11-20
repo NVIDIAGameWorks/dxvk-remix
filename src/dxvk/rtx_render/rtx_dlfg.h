@@ -82,7 +82,7 @@ namespace dxvk {
     }
     
     // note: always submits to present queue
-    void submit();
+    VkResult submit();
 
     template<DxvkAccess Access>
     void trackResource(Rc<DxvkResource> rc) {
@@ -237,7 +237,12 @@ namespace dxvk {
                        presentMetering);
     void runPresentThread();
     void runPacerThread();
-    void createBackbuffers();
+    VkResult createBackbuffers();
+    // Returns false when the submission fails. See handleQueueFailure() for what a failure does.
+    bool submitCommandList(DxvkDLFGCommandList* commandList);
+    // Disables DLFG and stores the error as the present status, so frames are dropped and the CS thread
+    // is not handed semaphores that a failed submission never signals.
+    void handleQueueFailure(VkResult result);
     
     Rc<RtxSemaphore> m_dlfgPacerSemaphore = nullptr;
     uint64_t m_dlfgPacerSemaphoreValue = 0;
@@ -302,6 +307,8 @@ namespace dxvk {
     }
 
     bool hasDLFGFailed() const;
+    // The swapchain replaces the DLFG presenter on its next present.
+    void markDLFGFailed() { m_hasDLFGFailed = true; }
 
     bool supportsPresentMetering() const;
 

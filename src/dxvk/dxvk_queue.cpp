@@ -303,16 +303,10 @@ namespace dxvk {
         Logger::err(str::format("DxvkSubmissionQueue: Command submission failed: ", status));
         m_lastError = status;
 
-        // NV-DXVK start: GPU crash diagnostics and handling on device loss
-        // Aftermath only produces a GPU crash dump for device loss. Other
-        // submission failures retain their existing handling without a stall.
-        if (status == VK_ERROR_DEVICE_LOST) {
-          onGpuCrash("queue submission");
-          handleDeviceLost();
-        } else {
-          waitForAftermathDump();
-          m_device->waitForIdle();
-        }
+        // NV-DXVK start: GPU crash diagnostics and handling on any submission failure
+        // A dropped command list never signals its fence or semaphores, so later waits on them would hang.
+        onGpuCrash("queue submission");
+        handleDeviceLost();
         // NV-DXVK end
       }
 
@@ -356,13 +350,10 @@ namespace dxvk {
         Logger::err(str::format("DxvkSubmissionQueue: Failed to sync fence: ", status));
         m_lastError = status;
 
-        // NV-DXVK start: GPU crash diagnostics and handling on device loss
-        if (status == VK_ERROR_DEVICE_LOST) {
-          onGpuCrash("fence synchronization");
-          handleDeviceLost();
-        } else {
-          m_device->waitForIdle();
-        }
+        // NV-DXVK start: GPU crash diagnostics and handling on any fence wait failure
+        // The command list's completion is unknown, so its resources cannot be released safely.
+        onGpuCrash("fence synchronization");
+        handleDeviceLost();
         // NV-DXVK end
       }
 
@@ -412,7 +403,7 @@ namespace dxvk {
   }
 
   void DxvkSubmissionQueue::handleDeviceLost() {
-    // Both the submit and finish threads can observe device loss; ensure only the first one performs
+    // Both the submit and finish threads can observe a fatal queue error. Only the first one performs
     // crash handling. Any other thread blocks here until the process is terminated below.
     static std::atomic<bool> s_handlingDeviceLoss(false);
     if (s_handlingDeviceLoss.exchange(true)) {
@@ -439,7 +430,9 @@ namespace dxvk {
     waitForAftermathDump();
     // Capture/upload the GPU crash (no-op if Sentry is inactive) before tearing down.
     sentry::processPendingGpuCrashReports(memoryExhausted);
-    Logger::err("DxvkSubmissionQueue: Exiting after GPU device loss");
+    Logger::err(m_lastError == VK_ERROR_DEVICE_LOST
+      ? "DxvkSubmissionQueue: Exiting after GPU device loss"
+      : "DxvkSubmissionQueue: Exiting after a fatal GPU queue error");
     // Signal the GPU-crash exit code so the bridge can distinguish this from a CPU crash.
     // A second GPU-crash exit code tells the bridge that video memory ran out shortly before the crash.
     // sentry::shutdown() is intentionally omitted here: sentry_close() blocks for several seconds

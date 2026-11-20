@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include <windows.h>
 #include <vulkan/vulkan.h>
 
 #include "../../util/util_macro.h"
@@ -53,8 +54,11 @@ inline bool vkFailed(VkResult res) {
                 res != VK_THREAD_IDLE_KHR)                                                                  \
             {                                                                                               \
                 std::stringstream ss;                                                                       \
-                ss << "[Vulkan call failed] " << __FILE__ << "(" << __LINE__ << "): " << STRINGIFY(value);  \
-                __debugbreak();                                                                             \
+                ss << "[Vulkan call failed] " << __FILE__ << "(" << __LINE__ << "): " << STRINGIFY(value)   \
+                   << " returned VkResult " << static_cast<int32_t>(res);                                   \
+                if (::IsDebuggerPresent()) {                                                                \
+                    __debugbreak();                                                                         \
+                }                                                                                           \
                 throw DxvkError(ss.str());                                                                  \
             }                                                                                               \
         }                                                                                                   \
@@ -66,7 +70,9 @@ inline bool vkFailed(VkResult res) {
             if (res != true) {                                                                              \
                 std::stringstream ss;                                                                       \
                 ss << "[Check failed] " << __FILE__ << "(" << __LINE__ << "): " << STRINGIFY(value);        \
-                __debugbreak();                                                                             \
+                if (::IsDebuggerPresent()) {                                                                \
+                    __debugbreak();                                                                         \
+                }                                                                                           \
                 throw DxvkError(ss.str());                                                                  \
             }                                                                                               \
         }                                                                                                   \

@@ -52,7 +52,7 @@ namespace dxvk {
       kInitialized,     // Texture was initialized and image asset data discovered.
       kQueuedForUpload, // Texture image upload or RTX IO request is in-flight.
       kVidMem,          // Texture image is in VID memory (either partial, or full mip-chain).
-      kFailed           // Texture image to upload or read, or was dropped.
+      kFailed           // Texture image failed to load. The previous view is kept, and only a forced load retries.
     };
 
     // Stage 1 - Texture initialized, image asset data discovered.
@@ -76,7 +76,6 @@ namespace dxvk {
 
     std::atomic_uint8_t m_requestedMips      = 0;
     std::atomic<State>  m_state              = State::kUnknown;
-    uint64_t            m_completionSyncpt   = 0; // completion syncpoint value for RTX IO
 
     // Texture streaming
     uint16_t            m_samplerFeedbackStamp = 0; // unique linear index of this asset; required to keep
@@ -244,9 +243,13 @@ namespace dxvk {
     static Rc<ManagedTexture> createTexture(const Rc<AssetData>& assetData, ColorSpace colorSpace);
   };
 
-  void loadTextureRtxIo(const Rc<ManagedTexture>& texture,
+  // Returns false when the file cannot be opened or a read fails to enqueue.
+  // pendingSyncpt receives the highest syncpoint of the enqueued reads, or 0 when none were enqueued.
+  // RTX IO writes dstImage until that syncpoint completes, even when the load fails.
+  bool loadTextureRtxIo(const Rc<ManagedTexture>& texture,
                         const Rc<DxvkImageView>& dstImage,
                         const uint32_t mipLevels_begin,
-                        const uint32_t mipLevels_end /* non-inclusive */ );
+                        const uint32_t mipLevels_end, /* non-inclusive */
+                        uint64_t& pendingSyncpt);
 
 } // namespace dxvk

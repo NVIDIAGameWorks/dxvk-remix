@@ -118,6 +118,13 @@ namespace dxvk {
     }
   }
   
+  void AccelManager::retireDynamicBlas(BlasEntry& blasEntry) {
+    if (blasEntry.dynamicBlas != nullptr) {
+      m_blasPool.push_back(std::move(blasEntry.dynamicBlas));
+      blasEntry.dynamicBlas = nullptr;
+    }
+  }
+
   PooledBlas::PooledBlas() {
     ++g_blasCount;
     buildInfo.geometryCount = 0;
@@ -131,7 +138,18 @@ namespace dxvk {
     }
     accelerationStructureReference = 0;
     accelStructure = nullptr;
+    setBoundOmms({});
     --g_blasCount;
+  }
+
+  void PooledBlas::setBoundOmms(std::vector<Rc<DxvkOpacityMicromap>>&& omms) {
+    for (const Rc<DxvkOpacityMicromap>& omm : omms) {
+      ++omm->blasPinCount;
+    }
+    for (const Rc<DxvkOpacityMicromap>& omm : m_boundOmms) {
+      --omm->blasPinCount;
+    }
+    m_boundOmms = std::move(omms);
   }
 
   // Keep a copy of the build info to validate it for potential updateability
@@ -438,6 +456,13 @@ namespace dxvk {
     execBarriers.recordCommands(cb);
   }
 
+  // Tracks the micromaps a BLAS was built with, so they outlive every command list that uses the BLAS.
+  static void trackBoundOmms(const Rc<DxvkContext>& ctx, const PooledBlas& blas) {
+    for (const Rc<DxvkOpacityMicromap>& omm : blas.getBoundOmms()) {
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(omm);
+    }
+  }
+
   void AccelManager::mergeInstancesIntoBlas(Rc<DxvkContext> ctx, 
                                             DxvkBarrierSet& execBarriers, 
                                             const std::vector<TextureRef>& textures,
@@ -462,13 +487,24 @@ namespace dxvk {
 
       if (sceneUnchanged && !m_ommBindPending && !m_reorderedSurfaces.empty()) {
         m_sceneUnchangedThisFrame = true;
-        // Touch pooled (merged) BLAS
-        for (auto& blas : m_blasPool) {
-          blas->frameLastTouched = currentFrame;
+        // Touch only the merged BLASes the cached scene uses.
+        // Replaced BLASes then age out of the pool, and release the micromaps they hold.
+        for (CachedBucketState& cachedBucket : m_cachedBuckets) {
+          if (cachedBucket.assignedBlas.ptr()) {
+            cachedBucket.assignedBlas->frameLastTouched = currentFrame;
+            if (opacityMicromapManager) {
+              opacityMicromapManager->markUsed(cachedBucket.assignedBlas->getBoundOmms());
+            }
+          }
         }
-        // Touch dynamic BLAS
+        // Touch dynamic BLAS, and track them because this path skips the dynamic BLAS loop that tracks them.
         for (auto& dynBlas : m_activeDynamicBlases) {
           dynBlas->frameLastTouched = currentFrame;
+          ctx->getCommandList()->trackResource<DxvkAccess::Read>(dynBlas->accelStructure);
+          trackBoundOmms(ctx, *dynBlas);
+          if (opacityMicromapManager) {
+            opacityMicromapManager->markUsed(dynBlas->getBoundOmms());
+          }
         }
         // Reassign surface indices (cleared by InstanceManager::resetSurfaceIndices at frame end)
         for (uint32_t i = 0; i < m_reorderedSurfaces.size(); ++i) {
@@ -816,6 +852,7 @@ namespace dxvk {
 
       bool forceRebuild = false;
       XXH64_hash_t boundOpacityMicromapHash = kEmptyHash;
+      Rc<DxvkOpacityMicromap> boundOmmBuffer;
       if (opacityMicromapManager) {
         // Check validity of a built BLAS, only if:
         // We can only support OMM on dynamic BLAS whos surface is unique to that BLAS.  This is so we can benefit from instancing BLAS memory.  
@@ -837,7 +874,7 @@ namespace dxvk {
           // Opacity micromaps must be bound before acceleration sizes are calculated
           // Note: since opacity micromaps for this frame are scheduled later 
           //       this will only pickup Opacity Micromaps built in previous frames
-          boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *exemplarInstance, 0, blasEntry->buildGeometries[0], instanceManager);
+          boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *exemplarInstance, 0, blasEntry->buildGeometries[0], instanceManager, &boundOmmBuffer);
 
           if (blasEntry->dynamicBlas.ptr()) {
             // A previously built BLAS needs to be rebuild if a corresponding Opacity Micromap availability has changed
@@ -852,6 +889,16 @@ namespace dxvk {
       } else {
         // No OMM manager — clear any stale OMM binding from cached geometry data
         blasEntry->buildGeometries[0].geometry.triangles.pNext = nullptr;
+      }
+
+      // Rebuild when the bound micromap object is not the one pinned on the BLAS.
+      // A cache item can be recreated with the same source hash.
+      if (blasEntry->dynamicBlas.ptr()) {
+        const std::vector<Rc<DxvkOpacityMicromap>>& pinnedOmms = blasEntry->dynamicBlas->getBoundOmms();
+        const DxvkOpacityMicromap* pPinnedOmm = pinnedOmms.empty() ? nullptr : pinnedOmms.front().ptr();
+        if (boundOmmBuffer.ptr() != pPinnedOmm) {
+          forceRebuild = true;
+        }
       }
 
       VkAccelerationStructureBuildGeometryInfoKHR buildInfo {};
@@ -889,11 +936,17 @@ namespace dxvk {
           m_blasPool.push_back(std::move(selectedBlas));
         }
         selectedBlas = createPooledBlas(sizeInfo.accelerationStructureSize, "BLAS Dynamic");
+
+        // Pin the bound micromap for as long as this BLAS is alive.
+        // Pins change only on a new BLAS, because a changed binding forces a rebuild and UPDATE excludes micromaps.
+        selectedBlas->opacityMicromapSourceHash = boundOpacityMicromapHash;
+        if (boundOmmBuffer.ptr()) {
+          selectedBlas->setBoundOmms({ std::move(boundOmmBuffer) });
+        }
       }
 
       assert(selectedBlas.ptr());
       selectedBlas->frameLastTouched = currentFrame;
-      blasEntry->dynamicBlas->opacityMicromapSourceHash = boundOpacityMicromapHash;
 
       if (update || build) {
         if (update && !build) {
@@ -912,6 +965,7 @@ namespace dxvk {
 
         // Track the lifetime of the BLAS buffers
         ctx->getCommandList()->trackResource<DxvkAccess::Write>(selectedBlas->accelStructure);
+        trackBoundOmms(ctx, *selectedBlas);
 
         // Put the merged BLAS into the build queue
         blasToBuild.push_back(buildInfo);
@@ -931,6 +985,7 @@ namespace dxvk {
       }
 
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(blasEntry->dynamicBlas->accelStructure);
+      trackBoundOmms(ctx, *blasEntry->dynamicBlas);
 
       // Record this dynamic BLAS so the full-skip cache path can touch it to prevent GC
       m_activeDynamicBlases.push_back(blasEntry->dynamicBlas);
@@ -976,8 +1031,11 @@ namespace dxvk {
         m_reorderedSurfacesFirstIndexOffset.insert(m_reorderedSurfacesFirstIndexOffset.end(),
                                                    cached.indexOffsets.begin(), cached.indexOffsets.end());
 
-        // Touch the BLAS so GC doesn't collect it
+        // Touch the BLAS so GC doesn't collect it, and mark its micromaps used, since this path does not rebind them
         cached.assignedBlas->frameLastTouched = currentFrame;
+        if (opacityMicromapManager) {
+          opacityMicromapManager->markUsed(cached.assignedBlas->getBoundOmms());
+        }
 
         // Emit TLAS instance with updated surface offset
         auto tlasInst = cached.tlasInstance;
@@ -1320,6 +1378,9 @@ namespace dxvk {
         selectedBlas->primitiveCounts = bucket->primitiveCounts;
         selectedBlas->hasOmmAttachments = bucket->hasOmmInstances;
 
+        // Pin the micromaps bound into this build for as long as this BLAS is alive.
+        selectedBlas->setBoundOmms(std::move(bucket->boundOmmBuffers));
+
         // Allocate a scratch buffer slice
         const size_t requiredScratchAllocSize = align(sizeInfo.buildScratchSize + m_scratchAlignment, m_scratchAlignment);
         buildInfo.scratchData.deviceAddress = totalScratchMemory;
@@ -1329,6 +1390,7 @@ namespace dxvk {
 
         // Track the lifetime of the BLAS buffers
         ctx->getCommandList()->trackResource<DxvkAccess::Write>(selectedBlas->accelStructure);
+        trackBoundOmms(ctx, *selectedBlas);
 
         // Put the merged BLAS into the build queue
         blasToBuild.push_back(buildInfo);
@@ -1336,6 +1398,7 @@ namespace dxvk {
       } else {
         // BLAS content is unchanged — skip the GPU build but still track the resource for read
         ctx->getCommandList()->trackResource<DxvkAccess::Read>(selectedBlas->accelStructure);
+        trackBoundOmms(ctx, *selectedBlas);
       }
 
       static float identityTransform[3][4] = {
@@ -1799,11 +1862,16 @@ namespace dxvk {
 
       // Bind opacity micromaps
       for (auto& blasBucket : blasBuckets) {
+        blasBucket->boundOmmBuffers.clear();
         for (uint32_t i = 0; i < blasBucket->geometries.size(); i++) {
+          Rc<DxvkOpacityMicromap> boundOmmBuffer;
           auto ommSourceHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *blasBucket->originalInstances[i], blasBucket->instanceBillboardIndices[i],
-                                                         blasBucket->geometries[i], instanceManager);
+                                                         blasBucket->geometries[i], instanceManager, &boundOmmBuffer);
           if (ommSourceHash != kEmptyHash) {
             blasBucket->hasOmmInstances = true;
+          }
+          if (boundOmmBuffer.ptr()) {
+            blasBucket->boundOmmBuffers.emplace_back(std::move(boundOmmBuffer));
           }
         }
       }
@@ -1886,6 +1954,7 @@ namespace dxvk {
 
     for (auto&& blas : m_blasPool) {
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(blas->accelStructure);
+      trackBoundOmms(ctx, *blas);
     }
 
     size_t totalScratchSize = 0;
@@ -2031,6 +2100,12 @@ namespace dxvk {
             oldTriangles.indexType != newTriangles.indexType ||
             oldTriangles.maxVertex != newTriangles.maxVertex ||
             oldTriangles.vertexStride != newTriangles.vertexStride) {
+          return false;
+        }
+
+        // An opacity micromap bound before or after the update requires a full build.
+        // Updating a BLAS that contains opacity micromaps leads to sporadic device lost errors.
+        if (oldTriangles.pNext != nullptr || newTriangles.pNext != nullptr) {
           return false;
         }
         break;

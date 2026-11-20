@@ -170,6 +170,8 @@ namespace dxvk {
     virtual ~NGXFeatureContext();
     virtual void releaseNGXFeature() = 0;
 
+    bool hasParameters() const { return m_parameters != nullptr; }
+
   protected:
     explicit NGXFeatureContext(DxvkDevice* device);
 
@@ -181,9 +183,9 @@ namespace dxvk {
   class NGXDLSSContext final : public NGXFeatureContext {
   public:
     struct OptimalSettings {
-      uint32_t optimalRenderSize[2];
-      uint32_t minRenderSize[2];
-      uint32_t maxRenderSize[2];
+      uint32_t optimalRenderSize[2] = {};
+      uint32_t minRenderSize[2] = {};
+      uint32_t maxRenderSize[2] = {};
     };
 
     struct NGXBuffers {
@@ -205,7 +207,8 @@ namespace dxvk {
     };
 
     // Query optimal DLSS settings for a given resolution and performance/quality profile.
-    OptimalSettings queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const;
+    // Returns false and leaves outSettings unchanged when the query fails.
+    bool queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality, OptimalSettings& outSettings) const;
 
     // initialize DLSS context, throws exception on failure
     void initialize(
@@ -260,9 +263,9 @@ namespace dxvk {
   class NGXRayReconstructionContext final : public NGXFeatureContext {
   public:
     struct QuerySettings {
-      uint32_t optimalRenderSize[2];
-      uint32_t minRenderSize[2];
-      uint32_t maxRenderSize[2];
+      uint32_t optimalRenderSize[2] = {};
+      uint32_t minRenderSize[2] = {};
+      uint32_t maxRenderSize[2] = {};
     };
 
     struct NGXBuffers {
@@ -287,7 +290,8 @@ namespace dxvk {
     };
 
     // Query optimal DLSS-RR settings for a given resolution and performance/quality profile.
-    QuerySettings queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const;
+    // Returns false and leaves outSettings unchanged when the query fails.
+    bool queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality, QuerySettings& outSettings) const;
 
     // initialize DLSS context, throws exception on failure
     void initialize(

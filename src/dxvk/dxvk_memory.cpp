@@ -483,7 +483,10 @@ DxvkMemory::DxvkMemory() { }
     // Retry without the hint constraints
     if (!result) {
       hints.set(DxvkMemoryFlag::IgnoreConstraints);
-      result = this->tryAlloc(req, nullptr, flags, hints, category);
+      // NV-DXVK start: Keep a required dedicated allocation and its export or import chain
+      // The pointer is only still set here when a dedicated allocation is required.
+      result = this->tryAlloc(req, dedAllocPtr, flags, hints, category);
+      // NV-DXVK end
     }
 
     // If that still didn't work, probe slower memory types as well

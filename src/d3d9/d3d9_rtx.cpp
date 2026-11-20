@@ -19,6 +19,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstring>
+#include <limits>
 
 namespace dxvk {
   static const bool s_isDxvkResolutionEnvVarSet = (env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "") || (env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "");
@@ -121,8 +122,8 @@ namespace dxvk {
     ScopedCpuProfileZone();
 
     const uint32_t indexStride = sizeof(T);
-    const size_t numIndexBytes = indexCount * indexStride;
-    const size_t indexOffset = indexStride * startIndex;
+    const size_t numIndexBytes = size_t(indexCount) * indexStride;
+    const size_t indexOffset = size_t(indexStride) * startIndex;
 
     auto processing = [this, &indexCtx, indexCount](const size_t offset, const size_t size) -> D3D9CommonBuffer::RemixIndexBufferMemoizationData {
       D3D9CommonBuffer::RemixIndexBufferMemoizationData result;
@@ -192,7 +193,7 @@ namespace dxvk {
 
     // Known stride for vertex capture buffers
     const uint32_t stride = sizeof(CapturedVertex);
-    const size_t vertexCaptureDataSize = align(geoData.vertexCount * stride, CACHE_LINE_SIZE);
+    const size_t vertexCaptureDataSize = align(size_t(geoData.vertexCount) * stride, CACHE_LINE_SIZE);
 
     DxvkBufferSlice slice = allocVertexCaptureBuffer(m_parent->GetDXVKDevice().ptr(), vertexCaptureDataSize);
 
@@ -248,6 +249,85 @@ namespace dxvk {
     });
   }
 
+  RasterBuffer* D3D9Rtx::getTargetBuffer(const D3DVERTEXELEMENT9& element, RasterGeometry& geoData) const {
+    // TODO: Simplify this by refactoring RasterGeometry to contain an array of RasterBuffer's
+    RasterBuffer* targetBuffer = nullptr;
+    switch (element.Usage) {
+    case D3DDECLUSAGE_POSITIONT:
+    case D3DDECLUSAGE_POSITION:
+      if (element.UsageIndex == 0) {
+        targetBuffer = &geoData.positionBuffer;
+      }
+      break;
+    case D3DDECLUSAGE_BLENDWEIGHT:
+      if (element.UsageIndex == 0) {
+        targetBuffer = &geoData.blendWeightBuffer;
+      }
+      break;
+    case D3DDECLUSAGE_BLENDINDICES:
+      if (element.UsageIndex == 0) {
+        targetBuffer = &geoData.blendIndicesBuffer;
+      }
+      break;
+    case D3DDECLUSAGE_NORMAL:
+      if (element.UsageIndex == 0) {
+        targetBuffer = &geoData.normalBuffer;
+      }
+      break;
+    case D3DDECLUSAGE_TEXCOORD:
+      if (m_texcoordIndex <= MAXD3DDECLUSAGEINDEX && element.UsageIndex == m_texcoordIndex) {
+        targetBuffer = &geoData.texcoordBuffer;
+      }
+      break;
+    case D3DDECLUSAGE_COLOR:
+      if (element.UsageIndex == 0 &&
+          !RtxOptions::ignoreAllVertexColorBakedLighting() &&
+          !lookupHash(RtxOptions::ignoreBakedLightingTextures(), m_activeDrawCallState.materialData.colorTextures[0].getImageHash())) {
+        targetBuffer = &geoData.color0Buffer;
+      }
+      break;
+    }
+    return targetBuffer;
+  }
+
+  bool D3D9Rtx::validateVertexRange(const VertexContext vertexContext[caps::MaxStreams], int64_t firstVertex, uint32_t vertexCount) {
+    if (firstVertex < std::numeric_limits<int32_t>::min() || firstVertex > std::numeric_limits<int32_t>::max()) {
+      ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall for ray tracing, the first vertex index does not fit in 32 bits."));
+      return false;
+    }
+
+    const bool validateAllElements = RtxOptions::validateCPUIndexData();
+    RasterGeometry& geoData = m_activeDrawCallState.geometryData;
+    bool isRangeBounded = false;
+    for (const auto& element : d3d9State().vertexDecl->GetElements()) {
+      const VertexContext& ctx = vertexContext[element.Stream];
+      if (ctx.mappedSlice.handle == VK_NULL_HANDLE) {
+        continue;
+      }
+
+      // By default only elements that processVertices copies are checked.
+      // A per-instance stream, or one bound only for unused elements, can hold fewer entries than the vertex range.
+      if (!validateAllElements && getTargetBuffer(element, geoData) == nullptr) {
+        continue;
+      }
+
+      const int64_t start = int64_t(ctx.offset) + int64_t(ctx.stride) * firstVertex;
+      const uint64_t size = uint64_t(ctx.stride) * vertexCount;
+      if (start < 0 || size > ctx.mappedSlice.length || uint64_t(start) > ctx.mappedSlice.length - size) {
+        ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall for ray tracing, the vertex range exceeds a bound vertex buffer."));
+        return false;
+      }
+      isRangeBounded |= ctx.stride > 0;
+    }
+
+    // Without a checked stream that has a stride, nothing limits the vertex count or the allocations sized by it.
+    if (!isRangeBounded) {
+      ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall for ray tracing, no bound vertex stream with a stride limits the vertex range."));
+      return false;
+    }
+    return true;
+  }
+
   void D3D9Rtx::processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, RasterGeometry& geoData) {
     DxvkBufferSlice streamCopies[caps::MaxStreams] {};
 
@@ -260,51 +340,16 @@ namespace dxvk {
         continue;
 
       ScopedCpuProfileZoneN("Process Vertices");
-      const int32_t vertexOffset = ctx.offset + ctx.stride * vertexIndexOffset;
-      const uint32_t numVertexBytes = ctx.stride * geoData.vertexCount;
 
-      // Validating index data here, vertexCount and vertexIndexOffset accounts for the min/max indices
-      if (RtxOptions::validateCPUIndexData()) {
-        if (ctx.mappedSlice.length < vertexOffset + numVertexBytes) {
-          throw DxvkError("Invalid draw call");
-        }
-      }
+      // validateVertexRange has checked this range against the mapped slice for every element copied below.
+      const size_t vertexOffset = size_t(int64_t(ctx.offset) + int64_t(ctx.stride) * vertexIndexOffset);
+      const size_t numVertexBytes = size_t(ctx.stride) * geoData.vertexCount;
 
-      // TODO: Simplify this by refactoring RasterGeometry to contain an array of RasterBuffer's
-      RasterBuffer* targetBuffer = nullptr;
-      switch (element.Usage) {
-      case D3DDECLUSAGE_POSITIONT:
-      case D3DDECLUSAGE_POSITION:
-        if (element.UsageIndex == 0) {
-          targetBuffer = &geoData.positionBuffer;
-          // Capture source vertex buffer for instance matching.
-          geoData.sourceVertexBufferAddress = (ctx.pVBO != nullptr)
-            ? ctx.pVBO->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>().ptr() : nullptr;
-        }
-        break;
-      case D3DDECLUSAGE_BLENDWEIGHT:
-        if (element.UsageIndex == 0)
-          targetBuffer = &geoData.blendWeightBuffer;
-        break;
-      case D3DDECLUSAGE_BLENDINDICES:
-        if (element.UsageIndex == 0)
-          targetBuffer = &geoData.blendIndicesBuffer;
-        break;
-      case D3DDECLUSAGE_NORMAL:
-        if (element.UsageIndex == 0)
-          targetBuffer = &geoData.normalBuffer;
-        break;
-      case D3DDECLUSAGE_TEXCOORD:
-        if (m_texcoordIndex <= MAXD3DDECLUSAGEINDEX && element.UsageIndex == m_texcoordIndex)
-          targetBuffer = &geoData.texcoordBuffer;
-        break;
-      case D3DDECLUSAGE_COLOR:
-        if (element.UsageIndex == 0 &&
-            !RtxOptions::ignoreAllVertexColorBakedLighting() &&
-            !lookupHash(RtxOptions::ignoreBakedLightingTextures(), m_activeDrawCallState.materialData.colorTextures[0].getImageHash())) {
-          targetBuffer = &geoData.color0Buffer;
-        }
-        break;
+      RasterBuffer* targetBuffer = getTargetBuffer(element, geoData);
+      if (targetBuffer == &geoData.positionBuffer) {
+        // Capture source vertex buffer for instance matching.
+        geoData.sourceVertexBufferAddress = (ctx.pVBO != nullptr)
+          ? ctx.pVBO->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>().ptr() : nullptr;
       }
 
       if (targetBuffer != nullptr) {
@@ -655,12 +700,18 @@ namespace dxvk {
     geoData.topology = DecodeInputAssemblyState(drawContext.PrimitiveType).primitiveTopology;
 
     // This can be negative!!
-    int vertexIndexOffset = drawContext.BaseVertexIndex;
+    int64_t firstVertex = drawContext.BaseVertexIndex;
 
     // Process index buffer
     uint32_t minIndex = 0, maxIndex = 0;
     if (indexContext.indexType != VK_INDEX_TYPE_NONE_KHR) {
       geoData.indexCount = GetVertexCount(drawContext.PrimitiveType, drawContext.PrimitiveCount);
+
+      const size_t indexStride = (indexContext.indexType == VK_INDEX_TYPE_UINT16) ? 2 : 4;
+      if ((size_t(drawContext.StartIndex) + geoData.indexCount) * indexStride > indexContext.indexBuffer.length) {
+        ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall for ray tracing, the index range exceeds the bound index buffer."));
+        return PrepareDrawFlag::PreserveDrawCallAndItsState;
+      }
 
       if (indexContext.indexType == VK_INDEX_TYPE_UINT16)
         geoData.indexBuffer = RasterBuffer(processIndexBuffer<uint16_t>(geoData.indexCount, drawContext.StartIndex, indexContext, minIndex, maxIndex), 0, 2, indexContext.indexType);
@@ -674,7 +725,7 @@ namespace dxvk {
       }
 
       geoData.vertexCount = maxIndex - minIndex + 1;
-      vertexIndexOffset += minIndex;
+      firstVertex += minIndex;
     } else {
       geoData.vertexCount = GetVertexCount(drawContext.PrimitiveType, drawContext.PrimitiveCount);
     }
@@ -722,6 +773,14 @@ namespace dxvk {
 
     // Max offseted index value within a buffer slice that geoData contains
     const uint32_t maxOffsetedIndex = maxIndex - minIndex;
+
+    // The vertex range comes from untrusted draw parameters and index data,
+    // so it is checked before any vertex copy, hash or allocation.
+    // The rasterizer still issues the original draw.
+    if (!validateVertexRange(vertexContext, firstVertex, geoData.vertexCount)) {
+      return PrepareDrawFlag::PreserveDrawCallAndItsState;
+    }
+    const int vertexIndexOffset = static_cast<int>(firstVertex);
 
     // Copy all the vertices into a staging buffer.  Assign fields of the geoData structure.
     processVertices(vertexContext, vertexIndexOffset, geoData);

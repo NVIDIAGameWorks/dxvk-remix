@@ -32,17 +32,26 @@
 namespace dxvk {
 
 #ifdef WITH_RTXIO
+  // Enqueues a read and raises pendingSyncpt to its syncpoint.
+  // Returns false when the read was not enqueued, or its syncpoint is unknown.
+  static bool enqueueReadRtxIo(const RtxIo::ImageDest& dst, const RtxIo::FileSource& src, uint64_t& pendingSyncpt) {
+    const uint64_t syncpt = RtxIo::get().enqueueRead(dst, src);
+    pendingSyncpt = std::max(pendingSyncpt, syncpt);
+    return syncpt != 0 && syncpt != RtxIo::kUnknownSyncpt;
+  }
+
   // Helper to schedule image layer update with RTXIO.
   // The entire layer mip-chain will be updated with the data starting from
   // the asset assetBaseMip.
-  static uint64_t scheduleImageLayerUpdateRtxIo(
+  // Returns false when a read fails, and stops enqueuing at that read.
+  static bool scheduleImageLayerUpdateRtxIo(
     const Rc<DxvkImage>& image,
     const int            layer,
     const uint32_t       mipLevels_begin,
     const uint32_t       mipLevels_end, // non-inclusive
     const Rc<AssetData>& assetData,
-    RtxIo::Handle        assetFile) {
-    auto& rtxio = RtxIo::get();
+    RtxIo::Handle        assetFile,
+    uint64_t&            pendingSyncpt) {
     const auto& assetInfo = assetData->info();
 
     // The number of mip levels in the tail data blob.
@@ -50,8 +59,6 @@ namespace dxvk {
     const uint32_t tailMipLevels = assetInfo.mininumLevelsToUpload;
     assert(mipLevels_begin < mipLevels_end);
     assert(mipLevels_end - mipLevels_begin == image->info().mipLevels);
-
-    uint64_t completionSyncpt = 0;
 
     if (assetInfo.compression != AssetCompression::None) {
       RtxIo::FileSource src { assetFile, 0, 0, true };
@@ -67,12 +74,16 @@ namespace dxvk {
         dst.startMip = n - mipLevels_begin;
         dst.count = isTail ? tailMipLevels : 1;
 
-        completionSyncpt = rtxio.enqueueRead(dst, src);
+        if (!enqueueReadRtxIo(dst, src, pendingSyncpt)) {
+          return false;
+        }
 
         if (isTail) {
           break;
         }
       }
+
+      return true;
     } else {
       uint64_t offset;
       size_t size;
@@ -92,38 +103,40 @@ namespace dxvk {
         0, static_cast<uint16_t>(mipLevels_end - mipLevels_begin)
       };
 
-      completionSyncpt = rtxio.enqueueRead(dst, src);
+      return enqueueReadRtxIo(dst, src, pendingSyncpt);
     }
-
-    return completionSyncpt;
   }
 #endif
 
-  void loadTextureRtxIo(const Rc<ManagedTexture>& texture,
+  bool loadTextureRtxIo(const Rc<ManagedTexture>& texture,
                         const Rc<DxvkImageView>& dstImage,
                         const uint32_t mipLevels_begin,
-                        const uint32_t mipLevels_end /* non-inclusive */ ) {
+                        const uint32_t mipLevels_end, /* non-inclusive */
+                        uint64_t& pendingSyncpt) {
+    pendingSyncpt = 0;
 #ifdef WITH_RTXIO
     auto& rtxio = RtxIo::get();
     
     RtxIo::Handle file;
-    if (rtxio.openFile(texture->m_assetData->info().filename, &file)) {
-      uint64_t completionSyncpt = 0;
+    if (!rtxio.openFile(texture->m_assetData->info().filename, &file)) {
+      return false;
+    }
 
-      for (uint32_t layer = 0; layer < dstImage->info().numLayers; layer++) {
-        completionSyncpt = scheduleImageLayerUpdateRtxIo(dstImage->image(),
-                                                         layer,
-                                                         mipLevels_begin,
-                                                         mipLevels_end,
-                                                         texture->m_assetData,
-                                                         file);
-      }
-
-      if (completionSyncpt) {
-        assert(texture->m_state == ManagedTexture::State::kQueuedForUpload);
-        texture->m_completionSyncpt = completionSyncpt;
+    for (uint32_t layer = 0; layer < dstImage->info().numLayers; layer++) {
+      if (!scheduleImageLayerUpdateRtxIo(dstImage->image(),
+                                         layer,
+                                         mipLevels_begin,
+                                         mipLevels_end,
+                                         texture->m_assetData,
+                                         file,
+                                         pendingSyncpt)) {
+        return false;
       }
     }
+
+    return true;
+#else
+    return false;
 #endif
   }
 
