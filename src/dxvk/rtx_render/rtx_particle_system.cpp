@@ -1137,8 +1137,11 @@ namespace dxvk {
       particleGeometry.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
       particleGeometry.cullMode = VK_CULL_MODE_NONE;
       particleGeometry.frontFace = VK_FRONT_FACE_CLOCKWISE;
-      if (particleSystem.getObjectPickingBuffer() != nullptr) {
-        particleGeometry.particlePickingBuffer = RasterBuffer(DxvkBufferSlice(particleSystem.getObjectPickingBuffer()), 0, sizeof(uint32_t), VK_FORMAT_R32_UINT);
+      if (particleSystem.getObjectPickingSnapshotBuffer() != nullptr) {
+        // SceneManager copies this draw's vertices before simulate() advances the ring tail.
+        // Capture the IDs now so they match the particles in that vertex copy.
+        particleSystem.snapshotObjectPickingBuffer(ctx, numParticles);
+        particleGeometry.particlePickingBuffer = RasterBuffer(DxvkBufferSlice(particleSystem.getObjectPickingSnapshotBuffer()), 0, sizeof(uint32_t), VK_FORMAT_R32_UINT);
         particleGeometry.particlePickingPrimitivesPerParticle = particleSystem.getIndicesPerParticle() / 3;
       }
       particleGeometry.hashes[HashComponents::Indices] = particleHashConstant ^ particleSystem.getGeneration();
@@ -1233,18 +1236,39 @@ namespace dxvk {
   void RtxParticleSystemManager::ParticleSystem::prepareObjectPickingBuffer(DxvkContext* pCtx, bool enabled) {
     if (!enabled) {
       m_objectPicking = nullptr;
+      m_objectPickingSnapshot = nullptr;
       return;
     }
 
+    // Matches POST_FX_HIGHLIGHTING_INVALID_VALUE and the default clearColorPicking.
+    constexpr uint32_t kInvalidParticlePickingValue = 0xFFFFFFFFu;
     const VkDeviceSize size = sizeof(uint32_t) * context.desc.maxNumParticles;
     if (m_objectPicking == nullptr || m_objectPicking->info().size != size) {
       DxvkBufferCreateInfo info;
       info.size = size;
-      info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-      info.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-      info.access = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+      info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+      info.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+      info.access = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
       m_objectPicking = pCtx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTX Particles - Object Picking Buffer");
+
+      // Slots the geometry pass has not written yet must never match a highlighted value.
+      pCtx->clearBuffer(m_objectPicking, 0, size, kInvalidParticlePickingValue);
+
+      info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+      info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+      info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+      m_objectPickingSnapshot = pCtx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTX Particles - Object Picking Snapshot");
+      pCtx->clearBuffer(m_objectPickingSnapshot, 0, size, kInvalidParticlePickingValue);
     }
+  }
+
+  void RtxParticleSystemManager::ParticleSystem::snapshotObjectPickingBuffer(DxvkContext* pCtx, uint32_t numParticles) {
+    if (m_objectPicking == nullptr || m_objectPickingSnapshot == nullptr || numParticles == 0) {
+      return;
+    }
+
+    const VkDeviceSize size = std::min<VkDeviceSize>(VkDeviceSize(numParticles) * sizeof(uint32_t), m_objectPicking->info().size);
+    pCtx->copyBuffer(m_objectPickingSnapshot, 0, m_objectPicking, 0, size);
   }
 
   void RtxParticleSystemManager::ParticleSystem::allocStaticBuffers(DxvkContext* ctx) {
