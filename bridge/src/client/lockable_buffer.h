@@ -27,7 +27,10 @@
 #include "d3d9_util.h"
 
 #include <d3d9.h>
+#include <mutex>
 #include <queue>
+#include <unordered_map>
+#include <unordered_set>
 
 template <typename T>
 class LockableBuffer: public Direct3DResource9_LSS<T> {
@@ -52,15 +55,97 @@ class LockableBuffer: public Direct3DResource9_LSS<T> {
   std::queue<LockInfo> m_lockInfos;
 
   const bool m_bUseSharedHeap = false;
-  std::unique_ptr<uint8_t[]> m_shadow;
+  std::unique_ptr<uint8_t[], ClientCopyDeleter> m_shadow;
   inline static size_t g_totalBufferShadow = 0;
+
+  // Static buffers whose copy may be freed while idle (client.freeIdleBufferCopiesSec).
+  // A freed copy is fetched back from the server on the next lock.
+  // Lock order: the device lock, then s_idleCopiesLock.
+  static constexpr size_t kMaxIdleCopySize = size_t(4) << 20;
+  uint64_t m_lastLockMs = 0;
+  uint32_t m_freedCrc = 0;
+  bool m_copyFreed = false;
+  bool m_inIdleCopies = false;
+  inline static std::mutex s_idleCopiesLock;
+  inline static std::unordered_set<LockableBuffer*> s_idleCopies;
+  // The time of each device's last pass, guarded by s_idleCopiesLock.
+  inline static std::unordered_map<const BaseDirect3DDevice9Ex_LSS*, uint64_t> s_lastPassMs;
 
 public:
   DescType getDesc() {
     return m_desc;
   }
 
+  // Frees the copies of pDevice's static buffers that were not locked for idleMs. Call under pDevice's lock.
+  static void freeIdleCopies(const uint32_t idleMs, const BaseDirect3DDevice9Ex_LSS* const pDevice) {
+    const uint64_t nowMs = GetTickCount64();
+    std::lock_guard<std::mutex> lock(s_idleCopiesLock);
+    if (!isIdlePassDue(s_lastPassMs[pDevice], nowMs, idleMs)) {
+      return;
+    }
+    for (auto it = s_idleCopies.begin(); it != s_idleCopies.end();) {
+      LockableBuffer* const pBuffer = *it;
+      // Only the presenting device's own buffers: the device lock does not serialize two devices that were
+      // created without D3DCREATE_MULTITHREADED, so another device may be inside a lock of its own buffer.
+      if (pBuffer->m_pDevice == pDevice &&
+          pBuffer->m_lockInfos.empty() && nowMs - pBuffer->m_lastLockMs >= idleMs) {
+        pBuffer->m_freedCrc = calcCrc32c(pBuffer->m_shadow.get(), pBuffer->m_desc.Size);
+        pBuffer->releaseShadowMem();
+        pBuffer->m_copyFreed = true;
+        pBuffer->m_inIdleCopies = false;
+        it = s_idleCopies.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
 private:
+  // A write-only buffer keeps its copy: the server reads a freed copy back with D3DLOCK_READONLY,
+  // which D3D9 does not allow on a D3DUSAGE_WRITEONLY buffer.
+  bool freesIdleCopy() const {
+    return (m_desc.Usage & (D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY)) == 0 && ClientOptions::getFreeIdleBufferCopiesMs();
+  }
+
+  void releaseShadowMem() {
+    g_totalBufferShadow -= m_desc.Size;
+    m_shadow.reset();
+  }
+
+  // Returns false when the server sent no whole buffer.
+  // The server answers a lock with the ReturnData flag with the HRESULT, then the whole buffer as one blob.
+  bool fetchCopy() {
+    UID uid = 0;
+    {
+      ClientMessage c(LockCmd, getId(), Commands::FlagBits::ReturnData);
+      uid = c.get_uid();
+    }
+    if (Result::Success != DeviceBridge::waitForCommand(Commands::Bridge_Response, GlobalOptions::getAckTimeout(), nullptr, true, uid)) {
+      Logger::err(format_string("Fetching the freed copy of %s buffer [%p] failed: no response from server.",
+                                bIsVertexBuffer ? "vertex" : "index", this));
+      return false;
+    }
+    bool whole = false;
+    const HRESULT hr = (HRESULT) DeviceBridge::get_data();
+    size_t pulledSize = 0;
+    if (SUCCEEDED(hr)) {
+      void* pData = nullptr;
+      pulledSize = DeviceBridge::get_data(&pData);
+      whole = pulledSize >= m_desc.Size;
+      if (whole) {
+        memcpy(m_shadow.get(), pData, m_desc.Size);
+        if (calcCrc32c(m_shadow.get(), m_desc.Size) != m_freedCrc) {
+          ONCE(Logger::warn("A fetched buffer copy differs from the freed one. The server's bytes are kept."));
+        }
+      }
+    }
+    if (!whole) {
+      Logger::err(format_string("Fetching the freed copy of %s buffer [%p] failed: hr 0x%08x, %zu of %u bytes.",
+                                bIsVertexBuffer ? "vertex" : "index", this, hr, pulledSize, m_desc.Size));
+    }
+    DeviceBridge::consumeResponse();
+    return whole;
+  }
   static bool getSharedHeapPolicy(const DescType& desc) {
     if (GlobalOptions::getUseSharedHeap()) {
       return (desc.Usage & D3DUSAGE_DYNAMIC) ?
@@ -72,7 +157,13 @@ private:
   }
 
   void initShadowMem() {
-    m_shadow = std::make_unique<uint8_t[]>(m_desc.Size);
+    uint8_t* pCopy = nullptr;
+    if (isIdleCopySize(m_desc.Size) && m_desc.Size <= kMaxIdleCopySize && freesIdleCopy()) {
+      pCopy = static_cast<uint8_t*>(VirtualAlloc(nullptr, m_desc.Size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+    }
+    m_shadow.get_deleter().virtualAlloc = pCopy != nullptr;
+    // VirtualAlloc returns zeroed pages, as the value-initialized heap copy is.
+    m_shadow.reset(pCopy != nullptr ? pCopy : new uint8_t[m_desc.Size]());
     g_totalBufferShadow += m_desc.Size;
     Logger::trace(format_string("Allocated a shadow for dynamic %s buffer [%p] "
                                 "(size: %zd, total shadow size: %zd)",
@@ -98,6 +189,11 @@ protected:
   }
 
   ~LockableBuffer() {
+    // Erased first, so that a running freeIdleCopies() pass can no longer reach the buffer.
+    if (freesIdleCopy()) {
+      std::lock_guard<std::mutex> lock(s_idleCopiesLock);
+      s_idleCopies.erase(this);
+    }
     if (m_bUseSharedHeap) {
       if (m_bufferId != SharedHeap::kInvalidId) {
         SharedHeap::deallocate(m_bufferId);
@@ -143,6 +239,18 @@ protected:
       *ppbData = SharedHeap::getBuf(m_bufferId) + offset;
       m_lockInfos.push({ offset, size, nullptr, flags, checkPtr, m_bufferId, discardedBufferId });
     } else {
+      // The lock fails when the fetch does, so that Unlock cannot upload stale bytes over the server's.
+      if (m_copyFreed) {
+        initShadowMem();
+        if (!fetchCopy()) {
+          releaseShadowMem();
+          return E_FAIL;
+        }
+        m_copyFreed = false;
+      }
+      if (m_shadow.get_deleter().virtualAlloc) {
+        m_lastLockMs = GetTickCount64();
+      }
       *ppbData = m_shadow.get() + offset;
 
       if (m_optimizedLock) {
@@ -177,6 +285,16 @@ protected:
     }
     const auto lockInfo = m_lockInfos.front();
     m_lockInfos.pop();
+
+    // A static buffer's copy becomes freeable after its first unlock, when it holds the application's data.
+    if (m_shadow.get_deleter().virtualAlloc) {
+      m_lastLockMs = GetTickCount64();
+      if (!m_inIdleCopies) {
+        std::lock_guard<std::mutex> lock(s_idleCopiesLock);
+        s_idleCopies.insert(this);
+        m_inIdleCopies = true;
+      }
+    }
 
     // Earlier uploads retain their own snapshots, so the discarded buffer can be retired here.
     if (lockInfo.discardedBufferId != SharedHeap::kInvalidId) {

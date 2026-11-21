@@ -24,6 +24,8 @@
 #include "d3d9_swapchain.h"
 #include "d3d9_surface.h"
 #include "d3d9_surfacebuffer_helper.h"
+#include "d3d9_vertexbuffer.h"
+#include "d3d9_indexbuffer.h"
 #include "swapchain_map.h"
 
 extern std::mutex gSwapChainMapMutex;
@@ -150,11 +152,29 @@ void Direct3DSwapChain9_LSS::onDestroy() {
   ClientMessage c(Commands::IDirect3DSwapChain9_Destroy, getId());
 }
 
+// Frees the idle client-side copies of this swap chain's device. That device's lock guards them.
+void Direct3DSwapChain9_LSS::freeIdleCopies() {
+  const uint32_t managedMs = ClientOptions::getFreeIdleManagedCopiesMs();
+  const uint32_t bufferMs = ClientOptions::getFreeIdleBufferCopiesMs();
+  if (managedMs || bufferMs) {
+    BRIDGE_PARENT_DEVICE_LOCKGUARD();
+    if (managedMs) {
+      Direct3DSurface9_LSS::freeIdleCopies(managedMs, m_pDevice);
+    }
+    if (bufferMs) {
+      Direct3DVertexBuffer9_LSS::freeIdleCopies(bufferMs, m_pDevice);
+      Direct3DIndexBuffer9_LSS::freeIdleCopies(bufferMs, m_pDevice);
+    }
+  }
+}
+
 HRESULT Direct3DSwapChain9_LSS::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect,
                                         HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion,
                                         DWORD dwFlags) {
   ZoneScoped;
   LogFunctionCall();
+  // Runs before the present lock is taken, so that the device lock is never taken inside it.
+  freeIdleCopies();
   std::lock_guard presentLock(gPresentMutex);
   {
     std::lock_guard mapLock(gSwapChainMapMutex);
