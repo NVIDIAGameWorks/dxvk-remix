@@ -1041,6 +1041,12 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetRenderTarget(DWORD RenderTargetInd
     // Setting render target 0 resets the viewport and the scissor rect on the server.
     if (RenderTargetIndex == 0) {
       m_sentState.invalidateViewportAndScissor();
+      // d3d9 resets them too, so GetViewport and GetScissorRect must return the new target's size.
+      if (pLssRenderTarget) {
+        const D3DSURFACE_DESC desc = pLssRenderTarget->getDesc();
+        m_state.viewport = { 0, 0, desc.Width, desc.Height, 0.f, 1.f };
+        m_state.scissorRect = { 0, 0, (LONG) desc.Width, (LONG) desc.Height };
+      }
     }
   }
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetRenderTarget()", D3DERR_INVALIDCALL, currentUID);
@@ -3921,6 +3927,12 @@ template<bool EnableSync>
 void Direct3DDevice9Ex_LSS<EnableSync>::initImplicitObjects(const D3DPRESENT_PARAMETERS& presParam) {
   initImplicitSwapchain(presParam);
   initImplicitRenderTarget();
+  // Reset and ResetEx set the viewport and the scissor rect to the new back buffer's size.
+  if (m_pImplicitRenderTarget) {
+    const D3DSURFACE_DESC desc = m_pImplicitRenderTarget->getDesc();
+    m_state.viewport = { 0, 0, desc.Width, desc.Height, 0.f, 1.f };
+    m_state.scissorRect = { 0, 0, (LONG) desc.Width, (LONG) desc.Height };
+  }
   if (presParam.EnableAutoDepthStencil) {
     initImplicitDepthStencil();
   }
