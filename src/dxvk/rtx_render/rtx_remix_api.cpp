@@ -400,7 +400,7 @@ namespace {
         const auto& src = materialWithoutPreload.getRayPortalMaterialData();
         return finalize(MaterialData { RayPortalMaterialData {
           preloadTexture(preload.emissiveTexture),
-          {}, // unused
+          preloadTexture(preload.albedoTexture), // portal mask
           src.getRayPortalIndex(),
           src.getSpriteSheetRows(),
           src.getSpriteSheetCols(),
