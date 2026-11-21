@@ -231,6 +231,11 @@ namespace dxvk {
 
     void SynchronizePresent();
 
+    // NV-DXVK start: Signal the frame latency fence for a skipped present
+    // Without this signal, a later SyncFrameLatency can wait forever.
+    void SignalFrameLatency();
+    // NV-DXVK end
+
     // NV-DXVK start: input-queue liveness ping
     void RunInputQueuePing();
     // NV-DXVK end
@@ -318,6 +323,10 @@ namespace dxvk {
 
     void runPresentTasks();
 // NV-DXVK end
+
+    // NV-DXVK start: Contain exceptions in the external present
+    void PresentFrame(HWND hDestWindowOverride);
+    // NV-DXVK end
 
   protected:
     int NumFrontBuffers() override { return 0; };

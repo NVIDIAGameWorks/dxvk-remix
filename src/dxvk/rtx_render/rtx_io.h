@@ -68,6 +68,9 @@ namespace dxvk {
   public:
     typedef void* Handle;
 
+    // A syncpoint that isComplete never reports as complete.
+    static constexpr uint64_t kUnknownSyncpt = ~0ull;
+
     struct FileSource {
       Handle file;
 
@@ -110,11 +113,21 @@ namespace dxvk {
     bool closeFile(const Handle handle);
 
     bool enqueueWait(const Rc<RtxSemaphore>& sema, uint64_t value);
+
+    // Returns the syncpoint that the read completes at.
+    // Returns 0 when the read was not enqueued.
+    // Returns kUnknownSyncpt when the read was enqueued but its syncpoint could not be queried.
     uint64_t enqueueRead(const ImageDest& dst, const FileSource& src);
     uint64_t enqueueRead(const BufferDest& dst, const FileSource& src);
+
     bool enqueueSignal(const Rc<RtxSemaphore>& sema, uint64_t value);
 
+    // Returns false when the timeline cannot be queried.
     bool isComplete(uint64_t syncpt) const;
+
+    // Returns a syncpoint at or after the one of every read enqueued so far.
+    // Returns kUnknownSyncpt when the timeline cannot be queried.
+    uint64_t queryNextSyncpt() const;
 
     bool flush(bool async);
 

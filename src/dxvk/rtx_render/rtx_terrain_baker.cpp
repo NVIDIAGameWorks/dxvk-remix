@@ -149,6 +149,10 @@ namespace dxvk {
     // Track the source albedo opacity texture to keep it in VidMem as it's needed for baking
     trackAndFinalizeTexture(replacementMaterial->getAlbedoOpacityTexture());
 
+    if (!replacementMaterial->getAlbedoOpacityTexture().getImageView()) {
+      return false;
+    }
+
     const DxvkImageCreateInfo& aoImageInfo = replacementMaterial->getAlbedoOpacityTexture().getImageView()->imageInfo();
 
     // Returns a scaled down the extent that fits within the max resolution constraint preserving the aspect ratio (barring float to integer conversion errors)

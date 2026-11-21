@@ -133,7 +133,7 @@ namespace dxvk {
     }
   }
 
-  void DxvkDLFGCommandList::submit() {
+  VkResult DxvkDLFGCommandList::submit() {
     ScopedCpuProfileZone();
 
     VkTimelineSemaphoreSubmitInfo timelineInfo;
@@ -160,12 +160,16 @@ namespace dxvk {
     submitInfo.signalSemaphoreCount = m_numSignalSemaphores;
     submitInfo.pSignalSemaphores = m_signalSemaphores.data();
 
-    m_device->vkd()->vkQueueSubmit(m_device->queues().__DLFG_QUEUE.queueHandle, 1, &submitInfo, m_signalFence);
+    const VkResult result = m_device->vkd()->vkQueueSubmit(m_device->queues().__DLFG_QUEUE.queueHandle, 1, &submitInfo, m_signalFence);
     // assert(m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle) == VK_SUCCESS);
+    if (result != VK_SUCCESS) {
+      Logger::err(str::format("DxvkDLFGCommandList::submit: vkQueueSubmit failed: ", result));
+    }
 
     m_numWaitSemaphores = 0;
     m_numSignalSemaphores = 0;
     m_signalFence = nullptr;
+    return result;
   }
 
   inline void DxvkDLFGCommandList::reset() {
@@ -253,7 +257,13 @@ namespace dxvk {
     // stall until the image is available
     {
       std::unique_lock<dxvk::mutex> lock(m_presentThread.mutex);
-      m_presentThread.condWorkConsumed.wait(lock, [this] { return m_backbufferInFlight[m_backbufferIndex] == false; });
+      m_presentThread.condWorkConsumed.wait(lock, [this] {
+        return m_lastPresentStatus != VK_SUCCESS || !m_backbufferInFlight[m_backbufferIndex];
+      });
+      const VkResult status = m_lastPresentStatus;
+      if (status != VK_SUCCESS) {
+        return status;
+      }
     }
 
     index = m_backbufferIndex;
@@ -319,8 +329,7 @@ namespace dxvk {
     // during the next present instead of returning a stale error value.
     m_lastPresentStatus = VK_SUCCESS;
 
-    createBackbuffers();
-    return res;
+    return createBackbuffers();
   }
 
   vk::PresenterInfo DxvkDLFGPresenter::info() const {
@@ -330,7 +339,7 @@ namespace dxvk {
     return ret;
   }
 
-  void DxvkDLFGPresenter::createBackbuffers() {
+  VkResult DxvkDLFGPresenter::createBackbuffers() {
     // note: assumes queue is idle and m_presentThread.mutex is locked
     assert(m_presentQueue.empty());
 
@@ -347,7 +356,7 @@ namespace dxvk {
       m_swapchainImages.clear();
       m_swapchainImageViews.clear();
       m_swapchainImageLayouts.clear();
-      return;
+      return VK_SUCCESS;
     }
 
     DxvkImageCreateInfo info;
@@ -411,9 +420,17 @@ namespace dxvk {
 
     dummyCmdList->endRecording();
 
+    VkResult result = VK_SUCCESS;
 #if !__DLFG_USE_GRAPHICS_QUEUE
-    dummyCmdList->submit();
-    m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle);
+    if (submitCommandList(dummyCmdList.ptr())) {
+      result = m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle);
+      if (result != VK_SUCCESS) {
+        Logger::err(str::format("DxvkDLFGPresenter::createBackbuffers: vkQueueWaitIdle failed: ", result));
+        handleQueueFailure(result);
+      }
+    } else {
+      result = m_lastPresentStatus;
+    }
 #else
     // submitting to the graphics queue here means we're racing with the submit thread;
     // we'll wait on unsignaled semaphores for the first imageCount frames instead, which works fine in practice on Windows
@@ -438,6 +455,22 @@ namespace dxvk {
       m_swapchainImageViews[i] = new DxvkImageView(m_device->vkd(), m_swapchainImages[i], viewInfo);
       m_swapchainImageLayouts[i] = VK_IMAGE_LAYOUT_UNDEFINED;
     }
+
+    return result;
+  }
+
+  bool DxvkDLFGPresenter::submitCommandList(DxvkDLFGCommandList* commandList) {
+    const VkResult result = commandList->submit();
+    if (result != VK_SUCCESS) {
+      handleQueueFailure(result);
+      return false;
+    }
+    return true;
+  }
+
+  void DxvkDLFGPresenter::handleQueueFailure(VkResult result) {
+    m_device->getCommon()->metaDLFG().markDLFGFailed();
+    m_lastPresentStatus = result;
   }
 
   void DxvkDLFGPresenter::synchronize() {
@@ -625,7 +658,9 @@ namespace dxvk {
       commandList->endRecording();
       commandList->addWaitSemaphore(m_dlfgPacerSemaphore->handle(), pacerSemaphoreWaitValue);
       commandList->addSignalSemaphore(image.sync.present);
-      commandList->submit();
+      if (!submitCommandList(commandList)) {
+        return false;
+      }
     }
 
     reflex.beginOutOfBandPresent(present.present.cachedReflexFrameId);
@@ -657,7 +692,11 @@ namespace dxvk {
 
       if (m_presentThread.stopped.load()) {
         // idle the queue here to ensure we can destroy objects if needed
-        m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle);
+        const VkResult result = m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle);
+        if (result != VK_SUCCESS) {
+          Logger::err(str::format("DxvkDLFGPresenter::runPresentThread: vkQueueWaitIdle failed: ", result));
+          handleQueueFailure(result);
+        }
         return;
       }
 
@@ -805,11 +844,16 @@ namespace dxvk {
           // pacer thread will do a CPU wait on this command list before signaling the semaphores below
           pacer.lastCmdListFence = commandList->getSignalFence();
           commandList->endRecording();
-          commandList->submit();
+          submitCommandList(commandList);
         }
         commandList = nullptr;
 
         reflex.endOutOfBandRendering(present.present.cachedReflexFrameId);
+
+        // The presents and the pacer job below wait on work that a failed acquire or submission never ran.
+        if (m_lastPresentStatus != VK_SUCCESS) {
+          continue;
+        }
 
         // try to use present metering if enabled, fall back to CPU metering if it fails
         bool usePresentMetering = DxvkDLFG::enablePresentMetering();
@@ -880,7 +924,9 @@ namespace dxvk {
 
         commandList->addSignalSemaphore(backbufferSignalSemaphore);
         commandList->endRecording();
-        commandList->submit();
+        if (!submitCommandList(commandList)) {
+          continue;
+        }
         commandList = nullptr;
 
         // rendered frame present
@@ -908,7 +954,9 @@ namespace dxvk {
 
         commandList->addSignalSemaphore(backbufferSignalSemaphore);
         commandList->endRecording();
-        commandList->submit();
+        if (!submitCommandList(commandList)) {
+          continue;
+        }
         commandList = nullptr;
 
         // rendered frame present

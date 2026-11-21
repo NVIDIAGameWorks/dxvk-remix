@@ -102,6 +102,9 @@ namespace dxvk {
       Rc<DxvkImageView>   rtxioDst;
       uint16_t            mip_begin;
       uint16_t            mip_end;
+      uint64_t            completionSyncpt;
+      // A failed load is never published, and only holds rtxioDst until its enqueued reads complete.
+      bool                failed;
     };
 
 
@@ -725,15 +728,23 @@ namespace dxvk {
                                            itemToProcess->imageCreateInfo(),
                                            mip_begin,
                                            mip_end);
-          loadTextureRtxIo(itemToProcess, rtxioDst, mip_begin, mip_end);
+          uint64_t completionSyncpt = 0;
+          const bool loaded = loadTextureRtxIo(itemToProcess, rtxioDst, mip_begin, mip_end, completionSyncpt);
+
+          if (!loaded) {
+            Logger::err(str::format("RTX IO failed to load texture: ", itemToProcess->m_assetData->info().filename));
+            itemToProcess->m_state = ManagedTexture::State::kFailed;
+          }
 
           {
             auto l = std::unique_lock{ m_waitingList_mutex };
             m_waitingList.push_back(ReadyToCopy_RTXIO{
-              /* .dstTexture = */ itemToProcess,
-              /* .rtxioDst   = */ rtxioDst,
-              /* .mip_begin  = */ mip_begin,
-              /* .mip_end    = */ mip_end,
+              /* .dstTexture       = */ itemToProcess,
+              /* .rtxioDst         = */ rtxioDst,
+              /* .mip_begin        = */ mip_begin,
+              /* .mip_end          = */ mip_end,
+              /* .completionSyncpt = */ completionSyncpt,
+              /* .failed           = */ !loaded,
             });
           }
         }
@@ -746,12 +757,13 @@ namespace dxvk {
 
     bool finalizeReadyRtxioTextures(DxvkContext* ctx) {
       auto l_canBeRemovedFromWaiting = [ctx](ReadyToCopy_RTXIO& ready) -> bool {
-        Rc<ManagedTexture>& tex = ready.dstTexture;
-        if (tex->m_state != ManagedTexture::State::kQueuedForUpload) {
-          return true;
-        }
-        if (!RtxIo::get().isComplete(tex->m_completionSyncpt)) {
+        // RTX IO writes rtxioDst until completionSyncpt, so the item keeps it referenced until then.
+        if (!RtxIo::get().isComplete(ready.completionSyncpt)) {
           return false;
+        }
+        Rc<ManagedTexture>& tex = ready.dstTexture;
+        if (ready.failed || tex->m_state != ManagedTexture::State::kQueuedForUpload) {
+          return true;
         }
         if (ctx) {
           if (ready.rtxioDst->image()->info().layout == VK_IMAGE_LAYOUT_UNDEFINED) {
@@ -772,6 +784,14 @@ namespace dxvk {
 
       {
         auto l = std::unique_lock{ m_waitingList_mutex };
+
+        // A later syncpoint bounds a read whose own syncpoint could not be queried,
+        // so the item is not kept waiting forever.
+        for (ReadyToCopy_RTXIO& ready : m_waitingList) {
+          if (ready.completionSyncpt == RtxIo::kUnknownSyncpt) {
+            ready.completionSyncpt = RtxIo::get().queryNextSyncpt();
+          }
+        }
 
         auto newend = std::remove_if(m_waitingList.begin(),
                                      m_waitingList.end(),
@@ -898,6 +918,10 @@ namespace dxvk {
     const auto managedState = processManagedTextureState(texture.ptr());
     if (managedState == ManagedTexture::State::kQueuedForUpload) {
       // Texture is in the async thread processing queue, leave it
+      return;
+    }
+    // A failed texture keeps its previous view. Only a forced load (hot reload) retries it.
+    if (managedState == ManagedTexture::State::kFailed && !forceUnload) {
       return;
     }
     // If not forced, we can early-out if mip count is already satisfied

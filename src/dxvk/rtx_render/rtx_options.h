@@ -1067,7 +1067,9 @@ namespace dxvk {
     RTX_OPTION("rtx", std::uint32_t, presentThrottleDelay, 16U,
                "A time in milliseconds that the DXVK presentation thread should sleep for. Requires present throttling to be enabled to take effect.\n"
                "Note that the application may sleep for longer than the specified time as is expected with sleep functions in general.");
-    RTX_OPTION_ENV("rtx", bool, validateCPUIndexData, false, "DXVK_VALIDATE_CPU_INDEX_DATA", "");
+    RTX_OPTION_ENV("rtx", bool, validateCPUIndexData, false, "DXVK_VALIDATE_CPU_INDEX_DATA",
+                   "When enabled, vertex elements that ray tracing does not read are also checked against their bound vertex buffers.\n"
+                   "Draws whose index or vertex range exceeds the bound buffers are always skipped for ray tracing, and are still rasterized.");
     RTX_OPTION_ARGS("rtx", bool, recomputeTextureHashOnWrite, false,
                 "When true, Remix computes the hash of a texture when the game writes to the resource. Some games manage their own pool of\n"
                 "textures and shuffle data around those resources resulting in incorrect textures being displayed. Recomputing the hash\n"

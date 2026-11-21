@@ -162,10 +162,19 @@ namespace dxvk {
     if (!m_dlssContext) {
       m_dlssContext = m_device->getCommon()->metaNGXContext().createDLSSContext();
     }
-    const auto optimalSettings = m_dlssContext->queryOptimalSettings(displaySize, perfQuality);
 
-    mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
-    mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
+    NGXDLSSContext::OptimalSettings optimalSettings;
+    if (m_dlssContext && m_dlssContext->queryOptimalSettings(displaySize, perfQuality, optimalSettings)) {
+      mInputSize[0] = optimalSettings.optimalRenderSize[0];
+      mInputSize[1] = optimalSettings.optimalRenderSize[1];
+    } else {
+      // The display size is always a valid DLSS input size.
+      mInputSize[0] = displaySize[0];
+      mInputSize[1] = displaySize[1];
+    }
+
+    outRenderSize[0] = mInputSize[0];
+    outRenderSize[1] = mInputSize[1];
 
     mDLSSOutputSize[0] = displaySize[0];
     mDLSSOutputSize[1] = displaySize[1];
@@ -223,6 +232,13 @@ namespace dxvk {
     {
       // Hack to bypass ownership check for aliased resources
       rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Write);
+    }
+
+    // This frame's output stays unwritten, and the switch takes effect on the next frame.
+    if (!m_dlssContext) {
+      Logger::err("[RTX] DLSS context creation failed. Switching to TAA-U.");
+      RtxOptions::upscalerType.setDeferred(UpscalerType::TAAU);
+      return;
     }
 
     {
@@ -340,6 +356,11 @@ namespace dxvk {
     if (!m_dlssContext) {
       m_dlssContext = m_device->getCommon()->metaNGXContext().createDLSSContext();
     }
+
+    if (!m_dlssContext) {
+      return;
+    }
+
     m_dlssContext->releaseNGXFeature();
 
     // Note: Use "actual profile" here not the set profile as this value should have any auto profiles resolved to an actual DLSS profile which is

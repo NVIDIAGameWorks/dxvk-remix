@@ -62,6 +62,11 @@ class AccelManager : public CommonDeviceObject {
     bool hasOmmInstances = false;
     bool hasSssInstances = false;
 
+    // OMM buffers bound into this bucket's geometries (see tryBindOpacityMicromap).
+    // createBlasBuffersAndInstances moves them onto the assigned BLAS when it builds or updates that BLAS,
+    // so they stay alive for as long as the BLAS is, independent of the OMM manager's cache lifetime.
+    std::vector<Rc<DxvkOpacityMicromap>> boundOmmBuffers;
+
     // The PooledBlas assigned to this bucket by createBlasBuffersAndInstances.
     // Stored here so the per-bucket cache can capture it after buildBlases.
     PooledBlas* assignedBlas = nullptr;
@@ -138,6 +143,10 @@ public:
 
   // Clean up instances which are deemed as no longer required
   void garbageCollection();
+
+  // Moves a BLAS entry's dynamic BLAS into the pool, which keeps it while the previous TLAS may still reference it.
+  // Call this before destroying the entry.
+  void retireDynamicBlas(BlasEntry& blasEntry);
 
   // Prepares instance buffers for rendering by the GPU
   void prepareSceneData(Rc<DxvkContext> ctx, class DxvkBarrierSet& execBarriers, InstanceManager& instanceManager);

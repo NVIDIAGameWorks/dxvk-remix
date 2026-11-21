@@ -124,6 +124,8 @@ namespace dxvk {
 
   void DxvkXeSS::onDeactivation() {
     if (m_xessContext) {
+      // XeSS requires work that uses the context to finish before the context is destroyed.
+      device()->waitForIdle();
       destroyXeSSContext();
     }
     m_initialized = false;
@@ -268,6 +270,8 @@ namespace dxvk {
 
     // Release existing context if any
     if (m_xessContext) {
+      // XeSS requires work that uses the context to finish before the context is destroyed.
+      renderContext->getDevice()->waitForIdle();
       destroyXeSSContext();
     }
 

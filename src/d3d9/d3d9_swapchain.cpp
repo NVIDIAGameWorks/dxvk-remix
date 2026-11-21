@@ -557,6 +557,13 @@ namespace dxvk {
       return D3D_OK;
     } catch (const DxvkError& e) {
       Logger::err(e.message());
+
+      // NV-DXVK start: Discard the interrupted present
+      // Pending barriers can reference resources that were released during unwinding.
+      m_context->discardRecording();
+      SignalFrameLatency();
+      // NV-DXVK end
+
       return D3DERR_DEVICEREMOVED;
     }
   }
@@ -1210,29 +1217,34 @@ namespace dxvk {
 
       uint32_t imageIndex = 0;
 
-      // NV-DXVK start: DLFG integration
-      VkResult status = presenter->acquireNextImage(sync, imageIndex);
-      // NV-DXVK end
+      // NV-DXVK start: DLFG integration, and bounded acquire retries
+      // A frame that fails to acquire an image skips its present.
+      constexpr uint32_t kMaxSwapChainRecreations = 3;
 
-      while (status != VK_SUCCESS) {
+      VkResult status = presenter->acquireNextImage(sync, imageIndex);
+
+      for (uint32_t recreateCount = 0; status != VK_SUCCESS && recreateCount < kMaxSwapChainRecreations; recreateCount++) {
         RecreateSwapChain(m_vsync);
-        
-        // NV-DXVK start: DLFG integration
+
         if (!presenter->hasSwapChain()) {
-          skipped = true;
+          status = VK_ERROR_OUT_OF_DATE_KHR;
           break;
         }
 
         info = presenter->info();
         status = presenter->acquireNextImage(sync, imageIndex);
-        // NV-DXVK end
 
-        if (status == VK_SUBOPTIMAL_KHR)
+        if (status == VK_SUBOPTIMAL_KHR) {
           break;
+        }
       }
 
-      // NV-DXVK start: DLFG integration
-      if (skipped) {
+      if (status != VK_SUCCESS && status != VK_SUBOPTIMAL_KHR) {
+        // A minimized window has no swap chain, which is expected and not worth a warning.
+        if (presenter->hasSwapChain()) {
+          Logger::warn(str::format("D3D9SwapChainEx: Skipping present without a swap chain image: ", status));
+        }
+        skipped = true;
         break;
       }
       // NV-DXVK end
@@ -1642,6 +1654,19 @@ namespace dxvk {
     // Wait for the sync event so that we respect the maximum frame latency
     m_frameLatencySignal->wait(m_frameId - GetActualFrameLatency());
   }
+
+
+  // NV-DXVK start: Signal the frame latency fence for a skipped present
+  void D3D9SwapChainEx::SignalFrameLatency() {
+    // Signaling through the CS thread keeps the fence ordered after earlier frames' signals.
+    m_parent->EmitCs([
+      cSignal  = m_frameLatencySignal,
+      cFrameId = m_frameId
+    ] (DxvkContext* ctx) {
+      ctx->signal(cSignal, cFrameId);
+    });
+  }
+  // NV-DXVK end
 
 
   // NV-DXVK start

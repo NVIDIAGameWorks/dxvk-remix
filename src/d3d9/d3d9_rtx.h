@@ -262,6 +262,13 @@ namespace dxvk {
 
     void prepareVertexCapture(const int vertexIndexOffset);
 
+    // Returns the RasterGeometry buffer that processVertices fills from the element.
+    // Returns null when the element is not used for ray tracing.
+    RasterBuffer* getTargetBuffer(const D3DVERTEXELEMENT9& element, RasterGeometry& geoData) const;
+
+    // Returns true when the bound vertex streams hold every vertex in the range.
+    bool validateVertexRange(const VertexContext vertexContext[caps::MaxStreams], int64_t firstVertex, uint32_t vertexCount);
+
     void processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, RasterGeometry& geoData);
 
     bool processRenderState();

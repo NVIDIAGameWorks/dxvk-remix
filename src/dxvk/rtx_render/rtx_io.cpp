@@ -351,12 +351,9 @@ namespace dxvk {
       return 0;
     }
 
-    uint64_t currentTopPt;
-    rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_TOP, &currentTopPt);
-
     m_sizeInFlight += sizeWithSlack;
 
-    return currentTopPt + 1;
+    return queryNextSyncpt();
   }
 
   uint64_t RtxIo::enqueueRead(const BufferDest& dst, const FileSource& src) {
@@ -402,17 +399,33 @@ namespace dxvk {
       return 0;
     }
 
-    uint64_t currentTopPt;
-    rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_TOP, &currentTopPt);
-
     m_sizeInFlight += sizeWithSlack;
+
+    return queryNextSyncpt();
+  }
+
+  uint64_t RtxIo::queryNextSyncpt() const {
+    uint64_t currentTopPt = 0;
+    if (auto result = rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_TOP, &currentTopPt)) {
+      ONCE(Logger::err(str::format("RTX IO top timeline query failed with ", result)));
+      return kUnknownSyncpt;
+    }
 
     return currentTopPt + 1;
   }
 
   bool RtxIo::isComplete(uint64_t syncpt) const {
-    uint64_t currentBottomPt;
-    rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_BOTTOM, &currentBottomPt);
+    if (syncpt == kUnknownSyncpt) {
+      return false;
+    }
+
+    // A failed query treats the timeline as not advanced, so nothing waiting on it is released early.
+    uint64_t currentBottomPt = 0;
+    if (auto result = rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_BOTTOM, &currentBottomPt)) {
+      ONCE(Logger::err(str::format("RTX IO bottom timeline query failed with ", result)));
+      return false;
+    }
+
     return currentBottomPt >= syncpt;
   }
 
@@ -427,6 +440,11 @@ namespace dxvk {
 
   bool RtxIo::flush(bool async) {
     ScopedCpuProfileZone();
+
+    // The texture manager's RTX IO thread can still flush during teardown, after release().
+    if (m_device == nullptr) {
+      return false;
+    }
 
     if (async) {
       const uint32_t framesSinceFlush = m_device->getCurrentFrameId() -

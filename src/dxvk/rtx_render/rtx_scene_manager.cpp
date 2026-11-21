@@ -500,6 +500,7 @@ namespace dxvk {
         if (iter->second.frameLastTouched < oldestFrame &&
             iter->second.getLinkedInstances().empty()) {
           unregisterGeometryBuffers(iter->second.modifiedGeometryData);
+          m_accelManager.retireDynamicBlas(iter->second);
           iter = entries.erase(iter);
         } else {
           ++iter;
@@ -567,6 +568,17 @@ namespace dxvk {
       }
     }
 
+    // These checks run before any write to the cached output, so a rejected draw leaves an existing entry intact.
+    if (!input.positionBuffer.defined()) {
+      ONCE(Logger::err("processGeometryInfo: no position data on input detected"));
+      return ObjectCacheState::kInvalid;
+    }
+
+    if (input.vertexCount == 0) {
+      ONCE(Logger::err("processGeometryInfo: input data is violating some assumptions"));
+      return ObjectCacheState::kInvalid;
+    }
+
     RaytraceGeometry& output = inOutGeometry;
 
     output.particlePickingBuffer = input.particlePickingBuffer.defined()
@@ -582,16 +594,6 @@ namespace dxvk {
 
     // Copy the hashes over
     output.hashes = input.hashes;
-
-    if (!input.positionBuffer.defined()) {
-      ONCE(Logger::err("processGeometryInfo: no position data on input detected"));
-      return ObjectCacheState::kInvalid;
-    }
-
-    if (input.vertexCount == 0) {
-      ONCE(Logger::err("processGeometryInfo: input data is violating some assumptions"));
-      return ObjectCacheState::kInvalid;
-    }
 
     // Set to 1 if inspection of the GeometryData structures contents on CPU is desired
     #define DEBUG_GEOMETRY_MEMORY 0
@@ -1490,6 +1492,9 @@ namespace dxvk {
   SceneManager::ObjectCacheState SceneManager::onSceneObjectAdded(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas) {
     // This is a new object.
     ObjectCacheState result = processGeometryInfo<true>(ctx, drawCallState, pBlas);
+    if (result == ObjectCacheState::kInvalid) {
+      return result;
+    }
     
     assert(result == ObjectCacheState::KBuildBVH);
 
@@ -1514,6 +1519,9 @@ namespace dxvk {
 
     // TODO: If mesh is static, no need to do any of the below, just use the existing modifiedGeometryData and set result to kInstanceUpdate.
     ObjectCacheState result = processGeometryInfo<false>(ctx, drawCallState, pBlas);
+    if (result == ObjectCacheState::kInvalid) {
+      return result;
+    }
 
     // We dont expect to hit the rebuild path here - since this would indicate an index buffer or other topological change, and that *should* trigger a new scene object (since the hash would change)
     assert(result != ObjectCacheState::KBuildBVH);
@@ -1708,14 +1716,32 @@ namespace dxvk {
 
     ObjectCacheState result = ObjectCacheState::kInvalid;
     BlasEntry* pBlas = nullptr;
-    if (m_drawCallCache.get(drawCallState, &pBlas) == DrawCallCache::CacheState::kExisted) {
+    const DrawCallCache::CacheState cacheState = m_drawCallCache.get(drawCallState, &pBlas);
+    if (cacheState == DrawCallCache::CacheState::kExisted) {
       result = onSceneObjectUpdated(ctx, drawCallState, pBlas);
     } else {
       result = onSceneObjectAdded(ctx, drawCallState, pBlas);
     }
     
     assert(pBlas != nullptr);
-    assert(result != ObjectCacheState::kInvalid);
+
+    if (result == ObjectCacheState::kInvalid) {
+      ONCE(Logger::err("[RTX] processDrawCallState: dropped a draw call with geometry that cannot be ray traced."));
+
+      // Garbage collection never removes an entry that was never touched, so a new entry is erased here.
+      if (cacheState == DrawCallCache::CacheState::kNew) {
+        auto& entries = m_drawCallCache.getEntries();
+        auto range = entries.equal_range(drawCallState.getGeometryData().getHashForRule<rules::TopologicalHash>());
+        for (auto iter = range.first; iter != range.second; ++iter) {
+          if (&iter->second == pBlas) {
+            unregisterGeometryBuffers(iter->second.modifiedGeometryData);
+            entries.erase(iter);
+            break;
+          }
+        }
+      }
+      return nullptr;
+    }
 
     // Update the input state, so we always have a reference to the original draw call state
     pBlas->frameLastTouched = m_device->getCurrentFrameId();

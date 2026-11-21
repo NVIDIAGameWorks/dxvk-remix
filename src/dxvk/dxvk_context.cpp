@@ -124,6 +124,21 @@ namespace dxvk {
   }
 
 
+  // NV-DXVK start: Discard a partially recorded command list
+  void DxvkContext::discardRecording() {
+    ScopedCpuProfileZone();
+    m_sdmaAcquires.reset();
+    m_sdmaBarriers.reset();
+    m_initBarriers.reset();
+    m_execAcquires.reset();
+    m_execBarriers.reset();
+    m_gfxBarriers.reset();
+
+    m_cmd = nullptr;
+  }
+  // NV-DXVK end
+
+
   void DxvkContext::flushCommandList() {
     ScopedCpuProfileZone();
     m_device->submitCommandList(
@@ -621,13 +636,36 @@ namespace dxvk {
 
     VkImageLayout layout = image->pickLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
+    // NV-DXVK start: Allocate the zero buffer before recording barriers on the image
+    // Allocation can throw, and the image is only tracked at the end of this function.
+    // The per-aspect createZeroBuffer calls below then reuse this buffer.
+    auto formatInfo = image->formatInfo();
+    VkDeviceSize zeroBufferSize = 0;
+
+    for (auto aspects = formatInfo->aspectMask; aspects; ) {
+      auto aspect = vk::getNextAspect(aspects);
+      auto extent = image->mipLevelExtent(subresources.baseMipLevel);
+      auto elementSize = formatInfo->elementSize;
+
+      if (formatInfo->flags.test(DxvkFormatFlag::MultiPlane)) {
+        auto plane = &formatInfo->planes[vk::getPlaneIndex(aspect)];
+        extent.width  /= plane->blockSize.width;
+        extent.height /= plane->blockSize.height;
+        elementSize = plane->elementSize;
+      }
+
+      VkExtent3D blockCount = util::computeBlockCount(extent, formatInfo->blockSize);
+      zeroBufferSize = std::max(zeroBufferSize, util::flattenImageExtent(blockCount) * elementSize);
+    }
+
+    createZeroBuffer(zeroBufferSize);
+
     this->initializeImage(image, subresources, layout,
       VK_PIPELINE_STAGE_TRANSFER_BIT,
       VK_ACCESS_TRANSFER_WRITE_BIT);
 
     m_execAcquires.recordCommands(m_cmd);
-
-    auto formatInfo = image->formatInfo();
+    // NV-DXVK end
 
     for (auto aspects = formatInfo->aspectMask; aspects; ) {
       auto aspect = vk::getNextAspect(aspects);
@@ -5925,7 +5963,7 @@ namespace dxvk {
       dstLayout, dstStages, dstAccess);
   }
 
-  // NV-DXVK start: use EXT_debug_utils
+  // NV-DXVK start: use EXT_debug_utils, and throw when a fresh pool also fails to allocate
   VkDescriptorSet DxvkContext::allocateDescriptorSet(
           VkDescriptorSetLayout     layout,
           const char                *name) {
@@ -5940,6 +5978,11 @@ namespace dxvk {
 
       m_descPool = m_device->createDescriptorPool();
       set = m_descPool->alloc(layout, name);
+    }
+
+    if (set == VK_NULL_HANDLE) {
+      throw DxvkError(str::format("DxvkContext: Failed to allocate descriptor set ",
+        name ? name : "(unnamed)", " with layout ", layout));
     }
 
     return set;

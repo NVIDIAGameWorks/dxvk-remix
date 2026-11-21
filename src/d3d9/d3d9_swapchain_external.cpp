@@ -77,6 +77,24 @@ namespace dxvk {
     ++m_frameId;
     SyncFrameLatency();
 
+    try {
+      PresentFrame(hDestWindowOverride);
+      return S_OK;
+    } catch (const DxvkError& e) {
+      Logger::err(e.message());
+
+      // Pending barriers can reference resources that were released during unwinding.
+      // The next Present waits on the frame's latency fence before it flushes, so the signal must be submitted here.
+      m_context->discardRecording();
+      SignalFrameLatency();
+      m_parent->Flush();
+      clearPresentTasks();
+      return D3DERR_DEVICEREMOVED;
+    }
+  }
+
+
+  void D3D9SwapchainExternal::PresentFrame(HWND hDestWindowOverride) {
     if (hDestWindowOverride != nullptr) {
       m_window = hDestWindowOverride;
     }
@@ -147,8 +165,6 @@ namespace dxvk {
       ctx->getCommandList()->addWaitSemaphore(m_frameResumeSemaphore->handle(), 1);
       ctx->flushCommandList();
     });
-
-    return S_OK;
   }
 
 }

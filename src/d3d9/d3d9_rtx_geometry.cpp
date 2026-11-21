@@ -45,7 +45,8 @@ namespace dxvk {
   template<typename T>
   void deduplicateSortIndices(const void* pIndexData, const size_t indexCount, const uint32_t maxIndexValue, std::vector<T>& uniqueIndicesOut) {
     // TODO (REMIX-657): Implement optimized variant of this function
-    // We know there will be at most, this many unique indices
+    // We know there will be at most, this many unique indices.
+    // D3D9Rtx::validateVertexRange bounds this range by the size of a bound vertex buffer.
     const uint32_t indexRange = maxIndexValue + 1;
 
     // Initialize all to 0

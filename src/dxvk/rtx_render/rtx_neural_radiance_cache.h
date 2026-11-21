@@ -179,6 +179,10 @@ namespace dxvk {
     // Returns if NRC is supported
     static bool checkIsSupported(const DxvkDevice* device);
 
+    // Hides RtxPass::isActive() so the pass reports inactive for the rest of a frame in which its NRC context failed.
+    // This is a stopgap specific to NRC. Other passes should not copy it, since RtxPass::isActive() is not virtual.
+    bool isActive() const { return RtxPass::isActive() && !m_hasContextFailed; }
+
     void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
 
     // To be called after both query and training PT passes completed to get a resolved radiance output
@@ -234,6 +238,10 @@ namespace dxvk {
 
     bool isEnabled() const override;
     bool initialize(DxvkDevice& device);
+    // Marks the NRC context as failed, so the pass reports inactive for the rest of the frame, and selects the fallback mode.
+    void handleContextFailure(const DxvkDevice* device);
+    // Switches to SHaRC, or to ReSTIR GI without SHaRC support, on the next frame.
+    static void selectFallbackMode(const DxvkDevice* device);
     void releaseResources();
     void dispatchResolve(RtxContext& ctx, const Resources::RaytracingOutput& rtOutput);
     void copyNumberOfTrainingRecords(RtxContext& ctx);
@@ -286,6 +294,7 @@ namespace dxvk {
     bool                   m_initSceneBounds = true;
 
     bool                   m_resetHistory = false;
+    bool                   m_hasContextFailed = false;
     VkDeviceSize           m_nrcVideoMemoryUsage = 0;
 
     float                  m_trainingLoss = 0.f;

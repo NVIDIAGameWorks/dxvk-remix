@@ -47,7 +47,9 @@ const VkDeviceSize kBufferAlignment = 16;
 const VkDeviceSize kBufferInBlasUsageAlignment = 256;
 
 namespace dxvk {
-  DxvkOpacityMicromap::DxvkOpacityMicromap(DxvkDevice& device) : m_vkd(device.vkd()) { }
+  DxvkOpacityMicromap::DxvkOpacityMicromap(DxvkDevice& device, XXH64_hash_t sourceHash)
+    : sourceHash(sourceHash)
+    , m_vkd(device.vkd()) { }
 
   DxvkOpacityMicromap::~DxvkOpacityMicromap() {
     if (opacityMicromap != VK_NULL_HANDLE) {
@@ -86,7 +88,23 @@ namespace dxvk {
       ommFormat == VkOpacityMicromapFormatEXT::VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT
       ? device.properties().extOpacityMicromapProperties.maxOpacity2StateSubdivisionLevel
       : device.properties().extOpacityMicromapProperties.maxOpacity4StateSubdivisionLevel;
-    subdivisionLevel = std::min(inputSubdivisionLevel, maxSubdivisionLevel);
+    const uint32_t supportedSubdivisionLevel = std::min(inputSubdivisionLevel, maxSubdivisionLevel);
+
+    // Lower the level until numTriangles * 4^level fits in 32 bits,
+    // which baking, building and VkMicromapTriangleEXT::dataOffset require.
+    // The array size in bytes never exceeds that count.
+    const uint64_t numTrianglesToFit = std::max(numTriangles, 1u);
+    uint32_t fittedSubdivisionLevel = std::min(supportedSubdivisionLevel, 15u);
+    while (fittedSubdivisionLevel > 0 && (numTrianglesToFit << (2 * fittedSubdivisionLevel)) > UINT32_MAX) {
+      fittedSubdivisionLevel--;
+    }
+
+    if (fittedSubdivisionLevel < supportedSubdivisionLevel) {
+      ONCE(Logger::warn(str::format("[RTX Opacity Micromap] Reduced the subdivision level from ", supportedSubdivisionLevel, " to ", fittedSubdivisionLevel,
+                                    " for a mesh with ", numTriangles, " triangles, so that its micro triangle count fits in 32 bits.")));
+    }
+
+    subdivisionLevel = static_cast<uint16_t>(fittedSubdivisionLevel);
   }
 
   bool OpacityMicromapCacheItem::isCompatibleWithOmmRequest(const OmmRequest& ommRequest) {
@@ -409,6 +427,11 @@ namespace dxvk {
     }
   }
 
+  // Returns true when a BLAS built with the item's micromap keeps its memory alive until that BLAS is rebuilt.
+  static bool isPinnedByBlas(const OpacityMicromapCacheItem& ommCacheItem) {
+    return ommCacheItem.blasOmmBuffers.ptr() && ommCacheItem.blasOmmBuffers->blasPinCount > 0;
+  }
+
   void OpacityMicromapManager::destroyOmmData(OpacityMicromapCache::iterator ommCacheItemIter, bool destroyParentInstanceOmmRequestContainer) {
     const XXH64_hash_t ommSrcHash = ommCacheItemIter->first;
     OpacityMicromapCacheItem& ommCacheItem = ommCacheItemIter->second;
@@ -444,6 +467,10 @@ namespace dxvk {
 
     if (ommCacheState <= OpacityMicromapCacheState::eStep2_Baked)
       deleteCachedSourceData(ommSrcHash, ommCacheState, destroyParentInstanceOmmRequestContainer);
+
+    if (isPinnedByBlas(ommCacheItem)) {
+      m_needsBlasRebuild = true;
+    }
 
     m_leastRecentlyUsedList.erase(ommCacheItemIter->second.leastRecentlyUsedListIter);
     m_memoryManager.release(ommCacheItemIter->second.getDeviceSize());
@@ -530,6 +557,14 @@ namespace dxvk {
     m_builtList.clear();
 
     m_leastRecentlyUsedList.clear();
+
+    for (const auto& ommCacheEntry : m_ommCache) {
+      if (isPinnedByBlas(ommCacheEntry.second)) {
+        m_needsBlasRebuild = true;
+        break;
+      }
+    }
+
     m_ommCache.clear();
 
 #ifdef VALIDATION_MODE
@@ -1593,12 +1628,16 @@ namespace dxvk {
   XXH64_hash_t OpacityMicromapManager::tryBindOpacityMicromap(Rc<DxvkContext> ctx,
                                                               const RtInstance& instance, uint32_t billboardIndex,
                                                               VkAccelerationStructureGeometryKHR& targetGeometry,
-                                                              const InstanceManager& instanceManager) {
+                                                              const InstanceManager& instanceManager,
+                                                              Rc<DxvkOpacityMicromap>* outBoundBuffer) {
     ScopedCpuProfileZone();
 
     // Always clear any stale OMM binding from cached geometry data.
     // If binding succeeds below, pNext will be set to the new OMM descriptor.
     targetGeometry.geometry.triangles.pNext = nullptr;
+    if (outBoundBuffer) {
+      *outBoundBuffer = nullptr;
+    }
     
     // Skip trying to bind an OMM if the budget is 0 since no OMMs can exist
     if (m_memoryManager.getBudget() == 0) {
@@ -1614,14 +1653,32 @@ namespace dxvk {
       return kEmptyHash;
     }
 
-    return bindOpacityMicromap(ctx, instance, billboardIndex, targetGeometry, instanceManager);
+    return bindOpacityMicromap(ctx, instance, billboardIndex, targetGeometry, instanceManager, outBoundBuffer);
+  }
+
+  void OpacityMicromapManager::markUsed(const std::vector<Rc<DxvkOpacityMicromap>>& boundOmms) {
+    const uint32_t currentFrameIndex = m_device->getCurrentFrameId();
+
+    for (const Rc<DxvkOpacityMicromap>& boundOmm : boundOmms) {
+      auto ommCacheItemIter = m_ommCache.find(boundOmm->sourceHash);
+
+      // An evicted item, or one recreated with the same hash, is not the one the BLAS was built with.
+      if (ommCacheItemIter == m_ommCache.end() || ommCacheItemIter->second.blasOmmBuffers.ptr() != boundOmm.ptr()) {
+        continue;
+      }
+
+      OpacityMicromapCacheItem& ommCacheItem = ommCacheItemIter->second;
+      ommCacheItem.lastUseFrameIndex = currentFrameIndex;
+      m_leastRecentlyUsedList.splice(m_leastRecentlyUsedList.end(), m_leastRecentlyUsedList, ommCacheItem.leastRecentlyUsedListIter);
+    }
   }
   
   XXH64_hash_t OpacityMicromapManager::bindOpacityMicromap(Rc<DxvkContext> ctx,
                                                            const RtInstance& instance, 
                                                            uint32_t billboardIndex,
                                                            VkAccelerationStructureGeometryKHR& targetGeometry,
-                                                           const InstanceManager& instanceManager) {
+                                                           const InstanceManager& instanceManager,
+                                                           Rc<DxvkOpacityMicromap>* outBoundBuffer) {
     m_numRequestedOMMBindings++;
 
     if (!OpacityMicromapOptions::enableBinding())
@@ -1672,6 +1729,11 @@ namespace dxvk {
       // Track the lifetime of the used buffers
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(ommCacheItem.blasOmmBuffers);
       m_boundOMMs.push_back(ommCacheItem.blasOmmBuffers);
+      // Give the caller a strong reference too, so it can pin this data for the lifetime of the
+      // BLAS it's about to be built into, independent of how long the cache keeps its own copy.
+      if (outBoundBuffer) {
+        *outBoundBuffer = ommCacheItem.blasOmmBuffers;
+      }
       break;
     }
     case OpacityMicromapCacheState::eUnknown:
@@ -1715,10 +1777,10 @@ namespace dxvk {
 
   template <typename IndexType>
   void calculateMicromapTriangleArrayBufferSizes(uint32_t numAllocatedTriangles,
-                                                 uint32_t& triangleArrayBufferSize,
-                                                 uint32_t& triangleIndexBufferSize) {
-    triangleArrayBufferSize = numAllocatedTriangles * sizeof(VkMicromapTriangleEXT);
-    triangleIndexBufferSize = numAllocatedTriangles * sizeof(IndexType);
+                                                 VkDeviceSize& triangleArrayBufferSize,
+                                                 VkDeviceSize& triangleIndexBufferSize) {
+    triangleArrayBufferSize = static_cast<VkDeviceSize>(numAllocatedTriangles) * sizeof(VkMicromapTriangleEXT);
+    triangleIndexBufferSize = static_cast<VkDeviceSize>(numAllocatedTriangles) * sizeof(IndexType);
   };
 
   template <typename IndexType>
@@ -1732,8 +1794,8 @@ namespace dxvk {
     Rc<DxvkBuffer>& triangleArrayBuffer,
     Rc<DxvkBuffer>& triangleIndexBuffer) {
 
-    uint32_t triangleArrayBufferSize;
-    uint32_t triangleIndexBufferSize;
+    VkDeviceSize triangleArrayBufferSize;
+    VkDeviceSize triangleIndexBufferSize;
     calculateMicromapTriangleArrayBufferSizes<IndexType>(numTriangles, triangleArrayBufferSize, triangleIndexBufferSize);
 
     // Create buffers
@@ -1773,8 +1835,12 @@ namespace dxvk {
     IndexType* ommIndex = hostTriangleIndexBuffer.data();
 
     for (IndexType i = 0; i < numTriangles; i++) {
+      // OpacityMicromapCacheItem limits the subdivision level so that every offset fits in 32 bits.
+      const uint64_t dataOffset = static_cast<uint64_t>(i) * opacityMicromapPerTriangleBufferSize;
+      assert(dataOffset <= UINT32_MAX);
+
       hostTriangleArrayBuffer[i] = micromapTriangleDescTemplate;
-      hostTriangleArrayBuffer[i].dataOffset = i * opacityMicromapPerTriangleBufferSize;
+      hostTriangleArrayBuffer[i].dataOffset = static_cast<uint32_t>(dataOffset);
 
       *(ommIndex++) = i;
     }
@@ -1814,10 +1880,9 @@ namespace dxvk {
     VkDeviceSize& arrayBufferDeviceSize,
     VkDeviceSize& blasOmmBuffersDeviceSize) {
     const uint32_t numMicroTrianglesPerTriangle = calculateNumMicroTriangles(subdivisionLevel);
-    const uint32_t numMicroTriangles = numTriangles * numMicroTrianglesPerTriangle;
     const uint8_t numOpacityMicromapBitsPerMicroTriangle = ommFormat == VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT ? 1 : 2;
     const uint32_t opacityMicromapPerTriangleBufferSize = dxvk::util::ceilDivide(numMicroTrianglesPerTriangle * numOpacityMicromapBitsPerMicroTriangle, 8);
-    const uint32_t opacityMicromapBufferSize = numTriangles * opacityMicromapPerTriangleBufferSize;
+    const VkDeviceSize opacityMicromapBufferSize = static_cast<VkDeviceSize>(numTriangles) * opacityMicromapPerTriangleBufferSize;
 
     // Account for any alignments at start and the end of buffers
     arrayBufferDeviceSize = opacityMicromapBufferSize + 2 * kBufferAlignment;
@@ -1834,8 +1899,8 @@ namespace dxvk {
     VkMicromapBuildSizesInfoEXT sizeInfo = { VK_STRUCTURE_TYPE_MICROMAP_BUILD_SIZES_INFO_EXT };
     calculateMicromapBuildInfo(ommUsageGroup, ommBuildInfo, sizeInfo);
 
-    uint32_t triangleArrayBufferSize;
-    uint32_t triangleIndexBufferSize;
+    VkDeviceSize triangleArrayBufferSize;
+    VkDeviceSize triangleIndexBufferSize;
     if (triangleIndexType == VK_INDEX_TYPE_UINT16)
       calculateMicromapTriangleArrayBufferSizes<uint16_t>(numTriangles, triangleArrayBufferSize, triangleIndexBufferSize);
     else
@@ -1925,10 +1990,9 @@ namespace dxvk {
 
     const uint32_t numTriangles = sourceData.numTriangles;
     const uint32_t numMicroTrianglesPerTriangle = calculateNumMicroTriangles(ommCacheItem.subdivisionLevel);
-    const uint32_t numMicroTriangles = numTriangles * numMicroTrianglesPerTriangle;
     const uint8_t numOpacityMicromapBitsPerMicroTriangle = ommCacheItem.ommFormat == VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT ? 1 : 2;
     const uint32_t opacityMicromapPerTriangleBufferSize = dxvk::util::ceilDivide(numMicroTrianglesPerTriangle * numOpacityMicromapBitsPerMicroTriangle, 8);
-    const uint32_t opacityMicromapBufferSize = numTriangles * opacityMicromapPerTriangleBufferSize;
+    const VkDeviceSize opacityMicromapBufferSize = static_cast<VkDeviceSize>(numTriangles) * opacityMicromapPerTriangleBufferSize;
 
     omm_validation_assert((usesSplitBillboardOpacityMicromap(instance) || numTriangles == instance.getBlas()->input.getGeometryData().calculatePrimitiveCount()) &&
                           instance.getBlas()->input.getGeometryData().calculatePrimitiveCount() ==
@@ -2038,7 +2102,7 @@ namespace dxvk {
 
     const uint32_t numMicroTrianglesPerTriangle = calculateNumMicroTriangles(ommCacheItem.subdivisionLevel);
     const uint32_t numTriangles = sourceData.numTriangles;
-    const uint32_t numMicroTriangles = numTriangles * numMicroTrianglesPerTriangle;
+    const uint64_t numMicroTriangles = static_cast<uint64_t>(numTriangles) * numMicroTrianglesPerTriangle;
 
     // OMM builds are at per OMM item granularity
     if (!forceBuild && numMicroTriangles > maxMicroTrianglesToBuild)
@@ -2046,10 +2110,9 @@ namespace dxvk {
 
     const uint8_t numOpacityMicromapBitsPerMicroTriangle = ommCacheItem.ommFormat == VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT ? 1 : 2;
     const uint32_t opacityMicromapPerTriangleBufferSize = dxvk::util::ceilDivide(numMicroTrianglesPerTriangle * numOpacityMicromapBitsPerMicroTriangle, 8);
-    const uint32_t opacityMicromapBufferSize = numTriangles * opacityMicromapPerTriangleBufferSize;
     const VkIndexType triangleIndexType = numTriangles <= UINT16_MAX ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
     const uint32_t numBytesPerIndexElement = triangleIndexType == VK_INDEX_TYPE_UINT16 ? 2 : 4;
-    ommCacheItem.blasOmmBuffers = new DxvkOpacityMicromap(*m_device);
+    ommCacheItem.blasOmmBuffers = new DxvkOpacityMicromap(*m_device, ommSrcHash);
 
     // Micromap forward definitions
     Rc<DxvkBuffer> triangleArrayBuffer;     // VkMicromapTriangleEXT per triangle
@@ -2158,8 +2221,8 @@ namespace dxvk {
     // Track the lifetime of all the build buffers needed for BLAS, including non-ref counted .opacityMicromap
     ctx->getCommandList()->trackResource<DxvkAccess::Write>(ommCacheItem.blasOmmBuffers);
 
-    m_numMicroTrianglesBuilt += numMicroTriangles;
-    maxMicroTrianglesToBuild -= std::min(numMicroTriangles, maxMicroTrianglesToBuild);
+    m_numMicroTrianglesBuilt += static_cast<uint32_t>(numMicroTriangles);
+    maxMicroTrianglesToBuild -= static_cast<uint32_t>(std::min<uint64_t>(numMicroTriangles, maxMicroTrianglesToBuild));
 
     // Source data is no longer needed
     deleteCachedSourceData(sourceDataIter, ommCacheItem.cacheState, true);

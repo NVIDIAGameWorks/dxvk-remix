@@ -107,7 +107,7 @@ using namespace remixapi::util;
             const DWORD& name = rpcHeader.pHandle;
 #define GET_RES(name, map) \
             GET_HND(name##Handle); \
-            const auto& name = map[name##Handle]; \
+            const auto name = findObject(map, name##Handle); \
             assert(name != NULL)
 
 // NOTE: MSDN states HWNDs are safe to cross x86-->x64 boundary, and that a truncating cast should be used:
@@ -164,6 +164,14 @@ std::unordered_map<uint32_t, IDirect3DPixelShader9*> gpD3DPixelShaders;
 std::unordered_map<uint32_t, IDirect3DSwapChain9*> gpD3DSwapChains;
 std::unordered_map<uint32_t, IDirect3DQuery9*> gpD3DQuery;
 std::unordered_map<uint32_t, void*> gMapRemixApi;
+
+// Returns the server object mapped to a client handle.
+// Returns null without inserting an entry when the handle is unknown, for example after a failed create.
+template<typename T>
+static T* findObject(const std::unordered_map<uint32_t, T*>& map, const uint32_t handle) {
+  const auto it = map.find(handle);
+  return it != map.end() ? it->second : nullptr;
+}
 
 // Global state
 bool gbBridgeRunning = true;
@@ -789,7 +797,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(pHandle);
         IDirect3DSurface9* pCursorBitmap = nullptr;
         if (pHandle != NULL) {
-          pCursorBitmap = (IDirect3DSurface9*) gpD3DResources[pHandle];
+          pCursorBitmap = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
         }
         const auto hresult = pD3DDevice->SetCursorProperties(XHotSpot, YHotSpot, pCursorBitmap);
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
@@ -826,6 +834,14 @@ void ProcessDeviceCommandQueue() {
         const auto hresult = pD3DDevice->CreateAdditionalSwapChain(&PresentationParameters, &pSwapChain);
         if (SUCCEEDED(hresult)) {
           gpD3DSwapChains[pHandle] = pSwapChain;
+        } else {
+          // The client wrapper's LinkSwapchain mapped this handle to the implicit swapchain.
+          // Drop that link so destroying the client wrapper cannot destroy the implicit swapchain.
+          IDirect3DSwapChain9* const pLinkedSwapChain = findObject(gpD3DSwapChains, pHandle);
+          if (pLinkedSwapChain != nullptr) {
+            pLinkedSwapChain->Release();
+            gpD3DSwapChains.erase(pHandle);
+          }
         }
         SEND_OPTIONAL_CREATE_FUNCTION_SERVER_RESPONSE(hresult, currentUID);
         break;
@@ -1105,9 +1121,9 @@ void ProcessDeviceCommandQueue() {
         PULL_OBJ(RECT, pSourceRect);
         PULL_HND(pDestHandle);
         PULL_OBJ(POINT, pDestPoint);
-        const auto& pSourceSurface = (IDirect3DSurface9*) gpD3DResources[pSourceHandle];
+        const auto& pSourceSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pSourceHandle);
         assert(pSourceSurface != nullptr);
-        const auto& pDestinationSurface = (IDirect3DSurface9*) gpD3DResources[pDestHandle];
+        const auto& pDestinationSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pDestHandle);
         assert(pDestinationSurface != nullptr);
         if (pSourceSurface != nullptr && pDestinationSurface != nullptr) {
           hresult = pD3DDevice->UpdateSurface(IN pSourceSurface, IN pSourceRect, IN pDestinationSurface, IN pDestPoint);
@@ -1122,9 +1138,9 @@ void ProcessDeviceCommandQueue() {
         GET_RES(pD3DDevice, gpD3DDevices);
         PULL_HND(pSourceTextureHandle);
         PULL_HND(pDestinationTextureHandle);
-        const auto& pSourceTexture = (IDirect3DBaseTexture9*) gpD3DResources[pSourceTextureHandle];
+        const auto& pSourceTexture = (IDirect3DBaseTexture9*) findObject(gpD3DResources, pSourceTextureHandle);
         assert(pSourceTexture != nullptr);
-        const auto& pDestinationTexture = (IDirect3DBaseTexture9*) gpD3DResources[pDestinationTextureHandle];
+        const auto& pDestinationTexture = (IDirect3DBaseTexture9*) findObject(gpD3DResources, pDestinationTextureHandle);
         assert(pDestinationTexture != nullptr);
         if (pSourceTexture != nullptr && pDestinationTexture != nullptr) {
           hresult = pD3DDevice->UpdateTexture(IN pSourceTexture, IN pDestinationTexture);
@@ -1138,8 +1154,8 @@ void ProcessDeviceCommandQueue() {
         GET_RES(pD3DDevice, gpD3DDevices);
         PULL_HND(pRenderTargetHandle);
         PULL_HND(pDestSurfaceHandle);
-        const auto& pRenderTarget = (IDirect3DSurface9*) gpD3DResources[pRenderTargetHandle];
-        const auto& pDestSurface = (IDirect3DSurface9*) gpD3DResources[pDestSurfaceHandle];
+        const auto& pRenderTarget = (IDirect3DSurface9*) findObject(gpD3DResources, pRenderTargetHandle);
+        const auto& pDestSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pDestSurfaceHandle);
         auto hresult = pD3DDevice->GetRenderTargetData(IN pRenderTarget, IN pDestSurface);
         hresult = ReturnSurfaceDataToClient(pDestSurface, hresult, currentUID);
         assert(SUCCEEDED(hresult));
@@ -1150,7 +1166,7 @@ void ProcessDeviceCommandQueue() {
         GET_RES(pD3DDevice, gpD3DDevices);
         PULL(uint32_t, iSwapChain);
         PULL_HND(pDestSurfaceHandle);
-        const auto& pDestSurface = (IDirect3DSurface9*) gpD3DResources[pDestSurfaceHandle];
+        const auto& pDestSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pDestSurfaceHandle);
         IDirect3DSurface9* pBackbuffer = nullptr;
         auto hresult = pD3DDevice->GetFrontBufferData(IN iSwapChain, IN pDestSurface);
         hresult = ReturnSurfaceDataToClient(pDestSurface, hresult, currentUID);
@@ -1165,8 +1181,8 @@ void ProcessDeviceCommandQueue() {
         PULL_HND(pDestHandle);
         PULL_OBJ(RECT, pDestRect);
         PULL(D3DTEXTUREFILTERTYPE, Filter);
-        const auto& pSourceSurface = (IDirect3DSurface9*) gpD3DResources[pSourceHandle];
-        const auto& pDestSurface = (IDirect3DSurface9*) gpD3DResources[pDestHandle];
+        const auto& pSourceSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pSourceHandle);
+        const auto& pDestSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pDestHandle);
         const auto hresult = pD3DDevice->StretchRect(IN pSourceSurface, IN pSourceRect, IN pDestSurface, IN pDestRect, IN Filter);
         assert(SUCCEEDED(hresult));
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
@@ -1178,7 +1194,7 @@ void ProcessDeviceCommandQueue() {
         PULL_HND(pHandle);
         PULL_OBJ(RECT, pRect);
         PULL_OBJ(D3DCOLOR, color);
-        const auto& pSurface = (IDirect3DSurface9*) gpD3DResources[pHandle];
+        const auto& pSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
         const auto hresult = pD3DDevice->ColorFill(IN pSurface, IN pRect, IN * color);
         assert(SUCCEEDED(hresult));
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
@@ -1209,7 +1225,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(pHandle);
         IDirect3DSurface9* pRenderTarget = nullptr;
         if (pHandle != NULL) {
-          pRenderTarget = (IDirect3DSurface9*) gpD3DResources[pHandle];
+          pRenderTarget = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
         }
         assert((pHandle != 0 && pRenderTarget != 0) || pHandle == 0);
         if ((pHandle != 0 && pRenderTarget != 0) || pHandle == 0) {
@@ -1240,7 +1256,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(pHandle);
         IDirect3DSurface9* pDepthStencil = nullptr;
         if (pHandle != NULL) {
-          pDepthStencil = (IDirect3DSurface9*) gpD3DResources[pHandle];
+          pDepthStencil = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
         }
         assert((pHandle != 0 && pDepthStencil != 0) || pHandle == 0);
         if ((pHandle != 0 && pDepthStencil != 0) || pHandle == 0) {
@@ -1440,7 +1456,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(pHandle);
         IDirect3DBaseTexture9* pTexture = nullptr;
         if (pHandle != NULL) {
-          pTexture = (IDirect3DBaseTexture9*) gpD3DResources[pHandle];
+          pTexture = (IDirect3DBaseTexture9*) findObject(gpD3DResources, pHandle);
           assert(pTexture != nullptr);
         }
         const auto hresult = pD3DDevice->SetTexture(IN Stage, IN pTexture);
@@ -1588,8 +1604,8 @@ void ProcessDeviceCommandQueue() {
         PULL_HND(pVertexDeclHandle);
         PULL(DWORD, Flags);
 
-        const auto& pVertexDecl = gpD3DVertexDeclarations[pVertexDeclHandle];
-        const auto& pDestBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pVertexBufferHandle];
+        const auto& pVertexDecl = findObject(gpD3DVertexDeclarations, pVertexDeclHandle);
+        const auto& pDestBuffer = (IDirect3DVertexBuffer9*) findObject(gpD3DResources, pVertexBufferHandle);
 
         const auto hresult = pD3DDevice->ProcessVertices(SrcStartIndex, DestIndex, VertexCount, pDestBuffer, pVertexDecl, Flags);
         assert(SUCCEEDED(hresult));
@@ -1618,7 +1634,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(pHandle);
         IDirect3DVertexDeclaration9* pVertexDecl = nullptr;
         if (pHandle != NULL) {
-          pVertexDecl = (IDirect3DVertexDeclaration9*) gpD3DVertexDeclarations[pHandle];
+          pVertexDecl = (IDirect3DVertexDeclaration9*) findObject(gpD3DVertexDeclarations, pHandle);
         }
         const auto hresult = pD3DDevice->SetVertexDeclaration(IN pVertexDecl);
         assert(SUCCEEDED(hresult));
@@ -1660,7 +1676,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(pHandle);
         IDirect3DVertexShader9* pShader = nullptr;
         if (pHandle != NULL) {
-          pShader = gpD3DVertexShaders[pHandle];
+          pShader = findObject(gpD3DVertexShaders, pHandle);
         }
         const auto hresult = pD3DDevice->SetVertexShader(IN pShader);
         assert(SUCCEEDED(hresult));
@@ -1720,7 +1736,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(Stride);
         IDirect3DVertexBuffer9* pStreamData = nullptr;
         if (pHandle != NULL) {
-          pStreamData = (IDirect3DVertexBuffer9*) gpD3DResources[pHandle];
+          pStreamData = (IDirect3DVertexBuffer9*) findObject(gpD3DResources, pHandle);
         }
         const auto hresult = pD3DDevice->SetStreamSource(IN StreamNumber, IN pStreamData, IN OffsetInBytes, IN Stride);
         assert(SUCCEEDED(hresult));
@@ -1747,7 +1763,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(pHandle);
         IDirect3DIndexBuffer9* pIndexData = NULL;
         if (pHandle != NULL) {
-          pIndexData = (IDirect3DIndexBuffer9*) gpD3DResources[pHandle];
+          pIndexData = (IDirect3DIndexBuffer9*) findObject(gpD3DResources, pHandle);
         }
         const auto hresult = pD3DDevice->SetIndices(IN pIndexData);
         assert(SUCCEEDED(hresult));
@@ -1778,7 +1794,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(pHandle);
         IDirect3DPixelShader9* pShader = nullptr;
         if (pHandle != NULL) {
-          pShader = gpD3DPixelShaders[pHandle];
+          pShader = findObject(gpD3DPixelShaders, pHandle);
         }
         const auto hresult = pD3DDevice->SetPixelShader(IN pShader);
         assert(SUCCEEDED(hresult));
@@ -1868,11 +1884,11 @@ void ProcessDeviceCommandQueue() {
         PULL(D3DCOMPOSERECTSOP, Operation);
         PULL(int, Xoffset);
         PULL(int, Yoffset);
-        const auto& srcSurface = (IDirect3DSurface9*) gpD3DResources[pSrcSurface];
-        const auto& destSurface = (IDirect3DSurface9*) gpD3DResources[pDestSurface];
+        const auto& srcSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pSrcSurface);
+        const auto& destSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pDestSurface);
 
-        const auto& srcVertexBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pSrcRect];
-        const auto& destVertexBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pDestRect];
+        const auto& srcVertexBuffer = (IDirect3DVertexBuffer9*) findObject(gpD3DResources, pSrcRect);
+        const auto& destVertexBuffer = (IDirect3DVertexBuffer9*) findObject(gpD3DResources, pDestRect);
 
         const auto hresult = ((IDirect3DDevice9Ex*) pD3DDevice)->ComposeRects(IN srcSurface, IN destSurface, IN srcVertexBuffer, IN NumRects, IN destVertexBuffer, IN Operation, IN Xoffset, IN Yoffset);
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
@@ -1913,7 +1929,7 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DStateBlock9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pSB = gpD3DStateBlocks[pHandle];
+        const auto& pSB = findObject(gpD3DStateBlocks, pHandle);
         safeDestroy(pSB, pHandle);
         gpD3DStateBlocks.erase(pHandle);
         break;
@@ -1923,7 +1939,10 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DStateBlock9_Capture:
       {
         GET_HND(pHandle);
-        const auto& pSB = gpD3DStateBlocks[pHandle];
+        const auto& pSB = findObject(gpD3DStateBlocks, pHandle);
+        if (pSB == nullptr) {
+          break;
+        }
         const auto hresult = pSB->Capture();
         assert(SUCCEEDED(hresult));
         break;
@@ -1931,8 +1950,11 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DStateBlock9_Apply:
       {
         GET_HND(pHandle);
-        const auto& pSB = gpD3DStateBlocks[pHandle];
+        const auto& pSB = findObject(gpD3DStateBlocks, pHandle);
         assert(pSB != nullptr);
+        if (pSB == nullptr) {
+          break;
+        }
         const auto hresult = pSB->Apply();
         assert(SUCCEEDED(hresult));
         break;
@@ -1948,7 +1970,7 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DSwapChain9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pSwapChain = gpD3DSwapChains[pHandle];
+        const auto& pSwapChain = findObject(gpD3DSwapChains, pHandle);
         safeDestroy(pSwapChain, pHandle);
         gpD3DSwapChains.erase(pHandle);
         break;
@@ -1969,7 +1991,10 @@ void ProcessDeviceCommandQueue() {
 
         HWND hwnd = TRUNCATE_HANDLE(HWND, hDestWindowOverride);
 
-        const auto hresult = pSwapChain->Present(pSourceRect, pDestRect, hwnd, pDirtyRegion, dwFlags);
+        // The present semaphore is released below even when there is no swapchain to present.
+        const auto hresult = pSwapChain != nullptr
+          ? pSwapChain->Present(pSourceRect, pDestRect, hwnd, pDirtyRegion, dwFlags)
+          : D3DERR_INVALIDCALL;
 
         if (!SUCCEEDED(hresult)) {
           std::stringstream ss;
@@ -1990,8 +2015,8 @@ void ProcessDeviceCommandQueue() {
       {
         GET_RES(pSwapChain, gpD3DSwapChains);
         PULL_HND(pDestSurfaceHandle);
-        const auto& pDestSurface = (IDirect3DSurface9*) gpD3DResources[pDestSurfaceHandle];
-        auto hresult = pSwapChain->GetFrontBufferData(pDestSurface);
+        const auto& pDestSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pDestSurfaceHandle);
+        auto hresult = pSwapChain != nullptr ? pSwapChain->GetFrontBufferData(pDestSurface) : D3DERR_INVALIDCALL;
         if (SUCCEEDED(hresult)) {
           gpD3DResources[pDestSurfaceHandle] = pDestSurface;
         }
@@ -2006,7 +2031,7 @@ void ProcessDeviceCommandQueue() {
         PULL(D3DBACKBUFFER_TYPE, Type);
         PULL_HND(pSurfaceHandle);
         IDirect3DSurface9* pBackbuffer = nullptr;
-        const auto hresult = pSwapChain->GetBackBuffer(iBackBuffer, Type, &pBackbuffer);
+        const auto hresult = pSwapChain != nullptr ? pSwapChain->GetBackBuffer(iBackBuffer, Type, &pBackbuffer) : D3DERR_INVALIDCALL;
         if (SUCCEEDED(hresult)) {
           gpD3DResources[pSurfaceHandle] = pBackbuffer;
         }
@@ -2043,9 +2068,11 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL(DWORD, PriorityNew);
-        const auto& pResource = gpD3DResources[pHandle];
+        const auto& pResource = findObject(gpD3DResources, pHandle);
         assert(pResource != nullptr);
-        pResource->SetPriority(PriorityNew);
+        if (pResource != nullptr) {
+          pResource->SetPriority(PriorityNew);
+        }
         break;
       }
       case IDirect3DResource9_GetPriority:
@@ -2053,9 +2080,11 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DResource9_PreLoad:
       {
         GET_HND(pHandle);
-        const auto& pResource = gpD3DResources[pHandle];
+        const auto& pResource = findObject(gpD3DResources, pHandle);
         assert(pResource != nullptr);
-        pResource->PreLoad();
+        if (pResource != nullptr) {
+          pResource->PreLoad();
+        }
         break;
       }
       case IDirect3DResource9_GetType:
@@ -2069,14 +2098,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DVertexDeclaration9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pVertexDeclaration = gpD3DVertexDeclarations[pHandle];
-        pVertexDeclaration->AddRef();
+        const auto& pVertexDeclaration = findObject(gpD3DVertexDeclarations, pHandle);
+        if (pVertexDeclaration != nullptr) {
+          pVertexDeclaration->AddRef();
+        }
         break;
       }
       case IDirect3DVertexDeclaration9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pVertexDeclaration = gpD3DVertexDeclarations[pHandle];
+        const auto& pVertexDeclaration = findObject(gpD3DVertexDeclarations, pHandle);
         safeDestroy(pVertexDeclaration, pHandle);
         gpD3DVertexDeclarations.erase(pHandle);
         break;
@@ -2094,14 +2125,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DVertexShader9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pVertexShader = gpD3DVertexShaders[pHandle];
-        pVertexShader->AddRef();
+        const auto& pVertexShader = findObject(gpD3DVertexShaders, pHandle);
+        if (pVertexShader != nullptr) {
+          pVertexShader->AddRef();
+        }
         break;
       }
       case IDirect3DVertexShader9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pVertexShader = gpD3DVertexShaders[pHandle];
+        const auto& pVertexShader = findObject(gpD3DVertexShaders, pHandle);
         safeDestroy(pVertexShader, pHandle);
         gpD3DVertexShaders.erase(pHandle);
         break;
@@ -2119,14 +2152,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DPixelShader9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pPixelShader = gpD3DPixelShaders[pHandle];
-        pPixelShader->AddRef();
+        const auto& pPixelShader = findObject(gpD3DPixelShaders, pHandle);
+        if (pPixelShader != nullptr) {
+          pPixelShader->AddRef();
+        }
         break;
       }
       case IDirect3DPixelShader9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pPixelShader = gpD3DPixelShaders[pHandle];
+        const auto& pPixelShader = findObject(gpD3DPixelShaders, pHandle);
         safeDestroy(pPixelShader, pHandle);
         gpD3DPixelShaders.erase(pHandle);
         break;
@@ -2165,7 +2200,7 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL(DWORD, LODNew);
-        const auto& pResource = gpD3DResources[pHandle];
+        const auto& pResource = findObject(gpD3DResources, pHandle);
         if (pResource != nullptr) {
           ((IDirect3DBaseTexture9*) pResource)->SetLOD(LODNew);
         }
@@ -2181,11 +2216,11 @@ void ProcessDeviceCommandQueue() {
         HRESULT hresult = D3DERR_INVALIDCALL;
         GET_HND(pHandle);
         PULL(D3DTEXTUREFILTERTYPE, FilterType);
-        const auto& pResource = gpD3DResources[pHandle];
+        const auto& pResource = findObject(gpD3DResources, pHandle);
         if (pResource != nullptr) {
           hresult = ((IDirect3DBaseTexture9*) pResource)->SetAutoGenFilterType(FilterType);
-          SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         }
+        SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         assert(pResource != nullptr);
         break;
       }
@@ -2194,7 +2229,7 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DBaseTexture9_GenerateMipSubLevels:
       {
         GET_HND(pHandle);
-        const auto& pResource = gpD3DResources[pHandle];
+        const auto& pResource = findObject(gpD3DResources, pHandle);
         if (pResource != nullptr) {
           ((IDirect3DBaseTexture9*) pResource)->GenerateMipSubLevels();
         }
@@ -2210,14 +2245,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DTexture9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pTexture = (IDirect3DTexture9*) gpD3DResources[pHandle];
-        pTexture->AddRef();
+        const auto& pTexture = (IDirect3DTexture9*) findObject(gpD3DResources, pHandle);
+        if (pTexture != nullptr) {
+          pTexture->AddRef();
+        }
         break;
       }
       case IDirect3DTexture9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pTexture = (IDirect3DTexture9*) gpD3DResources[pHandle];
+        const auto& pTexture = (IDirect3DTexture9*) findObject(gpD3DResources, pHandle);
         safeDestroy(pTexture, pHandle);
         gpD3DResources.erase(pHandle);
         break;
@@ -2246,7 +2283,10 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL_D(orig_cnt);
-        const auto& pTexture = (IDirect3DTexture9*) gpD3DResources[pHandle];
+        const auto& pTexture = (IDirect3DTexture9*) findObject(gpD3DResources, pHandle);
+        if (pTexture == nullptr) {
+          break;
+        }
         const auto cnt = pTexture->GetLevelCount();
         assert(orig_cnt == cnt);
         break;
@@ -2262,7 +2302,10 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pHandle);
         PULL_OBJ(D3DSURFACE_DESC, orig_desc);
         PULL_U(Level);
-        const auto& pTexture = (IDirect3DTexture9*) gpD3DResources[pHandle];
+        const auto& pTexture = (IDirect3DTexture9*) findObject(gpD3DResources, pHandle);
+        if (pTexture == nullptr) {
+          break;
+        }
         D3DSURFACE_DESC pDesc;
         const auto hresult = pTexture->GetLevelDesc(Level, &pDesc);
         assert(SUCCEEDED(hresult));
@@ -2273,7 +2316,10 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pTextureHandle);
         PULL_U(Level);
         PULL_HND(pSurfaceHandle);
-        const auto& pTexture = (IDirect3DTexture9*) gpD3DResources[pTextureHandle];
+        const auto& pTexture = (IDirect3DTexture9*) findObject(gpD3DResources, pTextureHandle);
+        if (pTexture == nullptr) {
+          break;
+        }
         LPDIRECT3DSURFACE9 pSurfaceLevel;
         const auto hresult = pTexture->GetSurfaceLevel(IN Level, OUT & pSurfaceLevel);
         if (SUCCEEDED(hresult)) {
@@ -2296,8 +2342,8 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL_OBJ(RECT, pDirtyRect);
-        const auto& pTexture = (IDirect3DTexture9*) gpD3DResources[pHandle];
-        const auto hresult = pTexture->AddDirtyRect(IN pDirtyRect);
+        const auto& pTexture = (IDirect3DTexture9*) findObject(gpD3DResources, pHandle);
+        const auto hresult = pTexture != nullptr ? pTexture->AddDirtyRect(IN pDirtyRect) : D3DERR_INVALIDCALL;
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         assert(SUCCEEDED(hresult));
         break;
@@ -2311,14 +2357,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DVolumeTexture9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) gpD3DResources[pHandle];
-        pVolumeTexture->AddRef();
+        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) findObject(gpD3DResources, pHandle);
+        if (pVolumeTexture != nullptr) {
+          pVolumeTexture->AddRef();
+        }
         break;
       }
       case IDirect3DVolumeTexture9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) gpD3DResources[pHandle];
+        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) findObject(gpD3DResources, pHandle);
         safeDestroy(pVolumeTexture, pHandle);
         gpD3DResources.erase(pHandle);
         break;
@@ -2347,7 +2395,10 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL_D(orig_cnt);
-        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) gpD3DResources[pHandle];
+        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) findObject(gpD3DResources, pHandle);
+        if (pVolumeTexture == nullptr) {
+          break;
+        }
         const auto cnt = pVolumeTexture->GetLevelCount();
         assert(orig_cnt == cnt);
         break;
@@ -2363,7 +2414,10 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pHandle);
         PULL_OBJ(D3DVOLUME_DESC, orig_desc);
         PULL_U(Level);
-        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) gpD3DResources[pHandle];
+        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) findObject(gpD3DResources, pHandle);
+        if (pVolumeTexture == nullptr) {
+          break;
+        }
         D3DVOLUME_DESC pDesc;
         const auto hresult = pVolumeTexture->GetLevelDesc(Level, &pDesc);
         assert(SUCCEEDED(hresult));
@@ -2374,7 +2428,10 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pVolumeTextureHandle);
         PULL_U(Level);
         PULL_HND(pVolumeLevelHandle);
-        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) gpD3DResources[pVolumeTextureHandle];
+        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) findObject(gpD3DResources, pVolumeTextureHandle);
+        if (pVolumeTexture == nullptr) {
+          break;
+        }
         LPDIRECT3DVOLUME9 pVolumeLevel;
         const auto hresult = pVolumeTexture->GetVolumeLevel(IN Level, OUT & pVolumeLevel);
         if (SUCCEEDED(hresult)) {
@@ -2394,11 +2451,15 @@ void ProcessDeviceCommandQueue() {
         PULL_U(Level);
         PULL_OBJ(D3DBOX, pBox);
         PULL_D(Flags);
-        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) gpD3DResources[pHandle];
+        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) findObject(gpD3DResources, pHandle);
         // Now lock the box so we can copy the data into it
-        D3DLOCKED_BOX pLockedVolume;
-        auto hresult = pVolumeTexture->LockBox(IN Level, IN & pLockedVolume, IN pBox, IN Flags);
+        D3DLOCKED_BOX pLockedVolume = {};
+        auto hresult = pVolumeTexture != nullptr
+          ? pVolumeTexture->LockBox(IN Level, IN & pLockedVolume, IN pBox, IN Flags)
+          : D3DERR_INVALIDCALL;
         assert(S_OK == hresult);
+        // The data is read from the queue even when the copy is skipped.
+        const bool isLocked = SUCCEEDED(hresult);
         // Copy the data over
         PULL_U(bytesPerPixel);
         PULL_U(width);
@@ -2420,14 +2481,18 @@ void ProcessDeviceCommandQueue() {
             const auto read_size = DeviceBridge::get_data(&row);
             assert(row_size == read_size);
 #endif
-            memcpy((void*) ptr, (void*) row, row_size);
+            if (isLocked) {
+              memcpy((void*) ptr, (void*) row, row_size);
+            }
           }
         }
 #ifdef SEND_ALL_LOCK_DATA_AT_ONCE
         assert(pulledSize == depth * slice_size);
 #endif
-        hresult = pVolumeTexture->UnlockBox(Level);
-        assert(SUCCEEDED(hresult));
+        if (isLocked) {
+          hresult = pVolumeTexture->UnlockBox(Level);
+          assert(SUCCEEDED(hresult));
+        }
         break;
       }
       case IDirect3DVolumeTexture9_AddDirtyBox:
@@ -2435,8 +2500,8 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pHandle);
         PULL_U(Level);
         PULL_OBJ(D3DBOX, pBox);
-        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) gpD3DResources[pHandle];
-        const auto hresult = pVolumeTexture->AddDirtyBox(IN pBox);
+        const auto& pVolumeTexture = (IDirect3DVolumeTexture9*) findObject(gpD3DResources, pHandle);
+        const auto hresult = pVolumeTexture != nullptr ? pVolumeTexture->AddDirtyBox(IN pBox) : D3DERR_INVALIDCALL;
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         assert(SUCCEEDED(hresult));
         break;
@@ -2450,14 +2515,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DCubeTexture9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pCubeTexture = (IDirect3DCubeTexture9*) gpD3DResources[pHandle];
-        pCubeTexture->AddRef();
+        const auto& pCubeTexture = (IDirect3DCubeTexture9*) findObject(gpD3DResources, pHandle);
+        if (pCubeTexture != nullptr) {
+          pCubeTexture->AddRef();
+        }
         break;
       }
       case IDirect3DCubeTexture9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pCubeTexture = (IDirect3DCubeTexture9*) gpD3DResources[pHandle];
+        const auto& pCubeTexture = (IDirect3DCubeTexture9*) findObject(gpD3DResources, pHandle);
         safeDestroy(pCubeTexture, pHandle);
         gpD3DResources.erase(pHandle);
         break;
@@ -2486,7 +2553,10 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL_D(orig_cnt);
-        const auto& pCubeTexture = (IDirect3DCubeTexture9*) gpD3DResources[pHandle];
+        const auto& pCubeTexture = (IDirect3DCubeTexture9*) findObject(gpD3DResources, pHandle);
+        if (pCubeTexture == nullptr) {
+          break;
+        }
         const auto cnt = pCubeTexture->GetLevelCount();
         assert(orig_cnt == cnt);
         break;
@@ -2502,7 +2572,10 @@ void ProcessDeviceCommandQueue() {
         PULL_OBJ(D3DSURFACE_DESC, orig_desc);
         PULL_U(Level);
         GET_HND(pHandle);
-        const auto& pCubeTexture = (IDirect3DCubeTexture9*) gpD3DResources[pHandle];
+        const auto& pCubeTexture = (IDirect3DCubeTexture9*) findObject(gpD3DResources, pHandle);
+        if (pCubeTexture == nullptr) {
+          break;
+        }
         D3DSURFACE_DESC pDesc;
         const auto hresult = pCubeTexture->GetLevelDesc(Level, &pDesc);
         assert(SUCCEEDED(hresult));
@@ -2514,7 +2587,10 @@ void ProcessDeviceCommandQueue() {
         PULL_U(Level);
         GET_HND(pCubeTextureHandle);
         PULL_HND(pCubeMapSurfaceHandle);
-        const auto& pCubeTexture = (IDirect3DCubeTexture9*) gpD3DResources[pCubeTextureHandle];
+        const auto& pCubeTexture = (IDirect3DCubeTexture9*) findObject(gpD3DResources, pCubeTextureHandle);
+        if (pCubeTexture == nullptr) {
+          break;
+        }
         LPDIRECT3DSURFACE9 pCubeMapSurface;
         const auto hresult = pCubeTexture->GetCubeMapSurface(IN FaceType, IN Level, OUT & pCubeMapSurface);
         if (SUCCEEDED(hresult)) {
@@ -2538,8 +2614,8 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pCubeTextureHandle);
         PULL(D3DCUBEMAP_FACES, FaceType);
         PULL_OBJ(RECT, pDirtyRect);
-        const auto& pCubeTexture = (IDirect3DCubeTexture9*) gpD3DResources[pCubeTextureHandle];
-        const auto hresult = pCubeTexture->AddDirtyRect(IN FaceType, IN pDirtyRect);
+        const auto& pCubeTexture = (IDirect3DCubeTexture9*) findObject(gpD3DResources, pCubeTextureHandle);
+        const auto hresult = pCubeTexture != nullptr ? pCubeTexture->AddDirtyRect(IN FaceType, IN pDirtyRect) : D3DERR_INVALIDCALL;
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         assert(SUCCEEDED(hresult));
         break;
@@ -2553,14 +2629,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DVertexBuffer9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pVertexBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pHandle];
-        pVertexBuffer->AddRef();
+        const auto& pVertexBuffer = (IDirect3DVertexBuffer9*) findObject(gpD3DResources, pHandle);
+        if (pVertexBuffer != nullptr) {
+          pVertexBuffer->AddRef();
+        }
         break;
       }
       case IDirect3DVertexBuffer9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pVertexBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pHandle];
+        const auto& pVertexBuffer = (IDirect3DVertexBuffer9*) findObject(gpD3DResources, pHandle);
         safeDestroy(pVertexBuffer, pHandle);
         gpD3DResources.erase(pHandle);
         break;
@@ -2595,7 +2673,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(OffsetToLock);
         PULL_U(SizeToLock);
         PULL_D(Flags);
-        const auto pVertexBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pHandle];
+        const auto pVertexBuffer = (IDirect3DVertexBuffer9*) findObject(gpD3DResources, pHandle);
 
         // The data is read from the queue even when the upload is skipped below.
         void* data = nullptr;
@@ -2634,7 +2712,10 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL_OBJ(D3DVERTEXBUFFER_DESC, orig_desc);
-        const auto& pVertexBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pHandle];
+        const auto& pVertexBuffer = (IDirect3DVertexBuffer9*) findObject(gpD3DResources, pHandle);
+        if (pVertexBuffer == nullptr) {
+          break;
+        }
         D3DVERTEXBUFFER_DESC pDesc;
         const auto hresult = pVertexBuffer->GetDesc(OUT & pDesc);
         assert(SUCCEEDED(hresult));
@@ -2649,14 +2730,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DIndexBuffer9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pIndexBuffer = (IDirect3DIndexBuffer9*) gpD3DResources[pHandle];
-        pIndexBuffer->AddRef();
+        const auto& pIndexBuffer = (IDirect3DIndexBuffer9*) findObject(gpD3DResources, pHandle);
+        if (pIndexBuffer != nullptr) {
+          pIndexBuffer->AddRef();
+        }
         break;
       }
       case IDirect3DIndexBuffer9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pIndexBuffer = (IDirect3DIndexBuffer9*) gpD3DResources[pHandle];
+        const auto& pIndexBuffer = (IDirect3DIndexBuffer9*) findObject(gpD3DResources, pHandle);
         safeDestroy(pIndexBuffer, pHandle);
         gpD3DResources.erase(pHandle);
         break;
@@ -2691,7 +2774,7 @@ void ProcessDeviceCommandQueue() {
         PULL_U(OffsetToLock);
         PULL_U(SizeToLock);
         PULL_D(Flags);
-        const auto pIndexBuffer = (IDirect3DIndexBuffer9*) gpD3DResources[pHandle];
+        const auto pIndexBuffer = (IDirect3DIndexBuffer9*) findObject(gpD3DResources, pHandle);
 
         // The data is read from the queue even when the upload is skipped below.
         void* data = nullptr;
@@ -2729,7 +2812,10 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL_OBJ(D3DINDEXBUFFER_DESC, orig_desc);
-        const auto& pIndexBuffer = (IDirect3DIndexBuffer9*) gpD3DResources[pHandle];
+        const auto& pIndexBuffer = (IDirect3DIndexBuffer9*) findObject(gpD3DResources, pHandle);
+        if (pIndexBuffer == nullptr) {
+          break;
+        }
         D3DINDEXBUFFER_DESC pDesc;
         const auto hresult = pIndexBuffer->GetDesc(OUT & pDesc);
         assert(SUCCEEDED(hresult));
@@ -2744,14 +2830,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DSurface9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pSurface = (IDirect3DSurface9*) gpD3DResources[pHandle];
-        pSurface->AddRef();
+        const auto& pSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
+        if (pSurface != nullptr) {
+          pSurface->AddRef();
+        }
         break;
       }
       case IDirect3DSurface9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pSurface = (IDirect3DSurface9*) gpD3DResources[pHandle];
+        const auto& pSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
         safeDestroy(pSurface, pHandle);
         gpD3DResources.erase(pHandle);
         break;
@@ -2778,7 +2866,10 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL_OBJ(D3DSURFACE_DESC, orig_desc);
-        const auto& pSurface = (IDirect3DSurface9*) gpD3DResources[pHandle];
+        const auto& pSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
+        if (pSurface == nullptr) {
+          break;
+        }
         D3DSURFACE_DESC pDesc;
         const auto hresult = pSurface->GetDesc(OUT & pDesc);
         assert(SUCCEEDED(hresult));
@@ -2788,8 +2879,8 @@ void ProcessDeviceCommandQueue() {
       {
         // Currently we only recieve calls for LockRect in cases where backbuffer data is to be copied for screenshots
         GET_HND(pHandle);
-        const auto pSurface = (IDirect3DSurface9*) gpD3DResources[pHandle];
-        HRESULT hresult = ReturnSurfaceDataToClient(pSurface, S_OK, currentUID);
+        const auto pSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
+        HRESULT hresult = ReturnSurfaceDataToClient(pSurface, pSurface != nullptr ? S_OK : D3DERR_INVALIDCALL, currentUID);
         assert(SUCCEEDED(hresult));
         break;
       }
@@ -2798,7 +2889,7 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pHandle);
         PULL_OBJ(RECT, pRect);
         PULL_D(Flags);
-        const auto pSurface = (IDirect3DSurface9*) gpD3DResources[pHandle];
+        const auto pSurface = (IDirect3DSurface9*) findObject(gpD3DResources, pHandle);
         const uint32_t width = pRect->right - pRect->left;
         const uint32_t height = pRect->bottom - pRect->top;
         PULL_D(dFormat);
@@ -2905,14 +2996,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DVolume9_AddRef:
       {
         GET_HND(pHandle);
-        const auto& pVolume = gpD3DVolumes[pHandle];
-        pVolume->AddRef();
+        const auto& pVolume = findObject(gpD3DVolumes, pHandle);
+        if (pVolume != nullptr) {
+          pVolume->AddRef();
+        }
         break;
       }
       case IDirect3DVolume9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pVolume = gpD3DVolumes[pHandle];
+        const auto& pVolume = findObject(gpD3DVolumes, pHandle);
         safeDestroy(pVolume, pHandle);
         gpD3DVolumes.erase(pHandle);
         break;
@@ -2931,7 +3024,10 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL_OBJ(D3DVOLUME_DESC, orig_desc);
-        const auto& pVolume = gpD3DVolumes[pHandle];
+        const auto& pVolume = findObject(gpD3DVolumes, pHandle);
+        if (pVolume == nullptr) {
+          break;
+        }
         D3DVOLUME_DESC pDesc;
         const auto hresult = pVolume->GetDesc(OUT & pDesc);
         assert(SUCCEEDED(hresult));
@@ -2947,11 +3043,15 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pHandle);
         PULL_OBJ(D3DBOX, pBox);
         PULL_D(Flags);
-        const auto& pVolume = gpD3DVolumes[pHandle];
+        const auto& pVolume = findObject(gpD3DVolumes, pHandle);
         // Now lock the box so we can copy the data into it
-        D3DLOCKED_BOX pLockedVolume;
-        auto hresult = pVolume->LockBox(IN & pLockedVolume, IN pBox, IN Flags);
+        D3DLOCKED_BOX pLockedVolume = {};
+        auto hresult = pVolume != nullptr
+          ? pVolume->LockBox(IN & pLockedVolume, IN pBox, IN Flags)
+          : D3DERR_INVALIDCALL;
         assert(S_OK == hresult);
+        // The data is read from the queue even when the copy is skipped.
+        const bool isLocked = SUCCEEDED(hresult);
         // Copy the data over
         PULL_U(bytesPerPixel);
         PULL_U(width);
@@ -2973,14 +3073,18 @@ void ProcessDeviceCommandQueue() {
             const auto read_size = DeviceBridge::get_data(&row);
             assert(row_size == read_size);
 #endif
-            memcpy((void*) ptr, (void*) row, row_size);
+            if (isLocked) {
+              memcpy((void*) ptr, (void*) row, row_size);
+            }
           }
         }
 #ifdef SEND_ALL_LOCK_DATA_AT_ONCE
         assert(pulledSize == depth * slice_size);
 #endif
-        hresult = pVolume->UnlockBox();
-        assert(SUCCEEDED(hresult));
+        if (isLocked) {
+          hresult = pVolume->UnlockBox();
+          assert(SUCCEEDED(hresult));
+        }
         break;
       }
 
@@ -2994,7 +3098,7 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DQuery9_Destroy:
       {
         GET_HND(pHandle);
-        const auto& pQuery = (IDirect3DQuery9*) gpD3DQuery[pHandle];
+        const auto& pQuery = (IDirect3DQuery9*) findObject(gpD3DQuery, pHandle);
         safeDestroy(pQuery, pHandle);
         gpD3DQuery.erase(pHandle);
         break;
@@ -3009,7 +3113,7 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL(DWORD, dwIssueFlags);
-        const auto pQuery = gpD3DQuery[pHandle];
+        const auto pQuery = findObject(gpD3DQuery, pHandle);
         const HRESULT hresult = (pQuery != nullptr) ? pQuery->Issue(dwIssueFlags) : D3DERR_INVALIDCALL;
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         break;
@@ -3019,7 +3123,7 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pHandle);
         PULL(DWORD, dwSize);
         PULL(DWORD, dwGetDataFlags);
-        const auto pQuery = gpD3DQuery[pHandle];
+        const auto pQuery = findObject(gpD3DQuery, pHandle);
         std::vector<uint8_t> data(dwSize);
         void* pData = dwSize > 0 ? data.data() : nullptr;
         const HRESULT hresult = (pQuery != nullptr) ? pQuery->GetData(pData, dwSize, dwGetDataFlags) : D3DERR_INVALIDCALL;

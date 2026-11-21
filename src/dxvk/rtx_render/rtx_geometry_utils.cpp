@@ -568,7 +568,10 @@ namespace dxvk {
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, BakeOpacityMicromapShader::getShader());
 
     if (!bakeState.initialized) {
-      bakeState.numMicroTrianglesToBake = args.numTriangles * args.numMicroTrianglesPerTriangle;
+      // OpacityMicromapCacheItem limits the subdivision level so that this count fits in 32 bits.
+      const uint64_t numMicroTrianglesToBake = static_cast<uint64_t>(args.numTriangles) * args.numMicroTrianglesPerTriangle;
+      assert(numMicroTrianglesToBake <= UINT32_MAX);
+      bakeState.numMicroTrianglesToBake = static_cast<uint32_t>(numMicroTrianglesToBake);
       bakeState.numMicroTrianglesBaked = 0;
       bakeState.initialized = true;
     }

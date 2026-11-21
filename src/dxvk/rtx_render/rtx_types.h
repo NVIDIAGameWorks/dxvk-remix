@@ -45,6 +45,7 @@ namespace dxvk
 {
 class RtCamera;
 class RtInstance;
+class DxvkOpacityMicromap;
 struct RtLight;
 class GraphInstance;
 struct D3D9FixedFunctionVS;
@@ -1012,6 +1013,16 @@ struct PooledBlas : public RcObject {
 
   explicit PooledBlas();
   ~PooledBlas();
+
+  // Returns the micromaps bound into this BLAS's build geometry (see OpacityMicromapManager::bindOpacityMicromap).
+  const std::vector<Rc<DxvkOpacityMicromap>>& getBoundOmms() const { return m_boundOmms; }
+
+  // Replaces the bound micromaps and updates their BLAS pin counts.
+  void setBoundOmms(std::vector<Rc<DxvkOpacityMicromap>>&& omms);
+
+private:
+  // Strong references that keep the bound micromaps alive for as long as this BLAS is.
+  std::vector<Rc<DxvkOpacityMicromap>> m_boundOmms;
 };
 
 // Information about a geometry, such as vertex buffers, and possibly a static BLAS for that geometry
