@@ -191,7 +191,6 @@ protected:
   BOOL m_bSoftwareVtxProcessing;
   D3DCLIPSTATUS9 m_clipStatus;
   float m_NPatchMode;
-  DWORD m_FVF;
   INT m_gpuThreadPriority;
   UINT m_maxFrameLatency;
 
@@ -275,6 +274,8 @@ protected:
     RECT scissorRect;
     // Vertex Decl
     D3DAutoPtr vertexDecl;
+    // A state block captures and applies the FVF together with the vertex declaration, as in d3d9.
+    DWORD fvf = 0;
     // Vertex Shader
     D3DAutoPtr vertexShader;
     // Vertex Shader Constants
