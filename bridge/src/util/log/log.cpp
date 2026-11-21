@@ -185,13 +185,13 @@ namespace bridge_util {
   void Logger::emitLine(const LogLevel level, const std::string& line) {
     if (level >= m_level) {
 #ifdef REMIX_BRIDGE_CLIENT
-      static char c_line[4096];
-      int len = sprintf_s(c_line, "%s\n", line.c_str());
+      const std::string out = line + "\n";
 #ifdef _DEBUG
-      OutputDebugStringA(c_line);
+      OutputDebugStringA(out.c_str());
 #endif
       if (m_hFile != INVALID_HANDLE_VALUE) {
-        WriteFile(m_hFile, c_line, len, NULL, NULL);
+        DWORD written = 0;
+        WriteFile(m_hFile, out.data(), DWORD(out.size()), &written, NULL);
       }
 #else
       if (m_fileStream.is_open()) {
