@@ -67,7 +67,7 @@ endif
 
 # Remix API Bridge App Tests
 # Each x86 app runs against the client and server from a regular bridge build in _output.
-bridge_app_tests = [ 'remix_api_init_order', 'remix_api_device_registration', 'sent_state_device', 'query_event_device', 'shared_heap_upload_device' ]
+bridge_app_tests = [ 'remix_api_init_order', 'remix_api_device_registration', 'sent_state_device', 'query_event_device', 'shared_heap_upload_device', 'surface_shadow_device' ]
 # Runs against the Remix runtime, through test_remix_api_runtime_app.py.
 runtime_app_tests = [ 'remix_api_gpu_resident_scene_device' ]
 if (cpu_family == 'x86')
