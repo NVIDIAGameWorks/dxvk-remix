@@ -57,14 +57,25 @@ public:
   CacheState get(const DrawCallState& drawCall, BlasEntry** out);
 
   MultimapType& getEntries() {return m_entries;}
+  // Erase entries with erase(), which also drops them from the exact match index
+  MultimapType::iterator erase(MultimapType::iterator iter);
 
   void clear() {
     m_entries.clear();
+    m_exactMatchIndex.clear();
+    m_exactMatchKeys.clear();
   }
   
 private:
   MultimapType m_entries;
+  // The entry that last matched a draw exactly, by a hash of the draw's exactMatch fields.
+  // An entry's input can change after that, so get() checks a hit with exactMatch.
+  std::unordered_map<XXH64_hash_t, BlasEntry*, XXH64_hash_passthrough> m_exactMatchIndex;
+  // The index key of each indexed entry, so erase() can drop its slot
+  std::unordered_map<const BlasEntry*, XXH64_hash_t> m_exactMatchKeys;
 
+  void unindex(const BlasEntry* entry);
+  CacheState findInBucket(const DrawCallState& drawCall, BlasEntry** out);
   BlasEntry* allocateEntry(XXH64_hash_t hash, const DrawCallState& drawCall);
 };
 

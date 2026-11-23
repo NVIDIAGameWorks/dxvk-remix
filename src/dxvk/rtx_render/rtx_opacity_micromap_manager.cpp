@@ -1240,18 +1240,13 @@ namespace dxvk {
           const uint32_t currentFrameIndex = m_device->getCurrentFrameId();
 
           OMMBuildRequestStatistics& ommBuildRequestStatistics = m_ommBuildRequestStatistics[ommSrcHash];
-          ommBuildRequestStatistics.numTimesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, ommBuildRequestStatistics.numTimesRequested);
-
-          if (currentFrameIndex != ommBuildRequestStatistics.lastRequestFrameId) {
-            ommBuildRequestStatistics.lastRequestFrameId = currentFrameIndex;
-            ommBuildRequestStatistics.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, ommBuildRequestStatistics.numFramesRequested);
-          }
+          ommBuildRequestStatistics.countRequest(currentFrameIndex);
 
           if (instance.getFrameAge() < minInstanceFrameAge)
             return false;
 
           if (ommBuildRequestStatistics.numTimesRequested < minNumRequests ||
-              ommBuildRequestStatistics.numFramesRequested < minNumFramesRequested)
+              ommBuildRequestStatistics.numFramesRequested(currentFrameIndex) < minNumFramesRequested)
             return false;
 
           // Request passed the check, don't track statistics for it no more
@@ -1524,16 +1519,12 @@ namespace dxvk {
 
           // Accumulate stats cheaply.
           OMMBuildRequestStatistics& stats = m_ommBuildRequestStatistics[cachedHash];
-          stats.numTimesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, stats.numTimesRequested);
-          if (currentFrameIndex != stats.lastRequestFrameId) {
-            stats.lastRequestFrameId = currentFrameIndex;
-            stats.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, stats.numFramesRequested);
-          }
+          stats.countRequest(currentFrameIndex);
 
           // Check thresholds — defer if not met.
           if (inst->getFrameAge() < minInstanceFrameAge ||
               stats.numTimesRequested < minNumRequests ||
-              stats.numFramesRequested < minNumFramesRequested) {
+              stats.numFramesRequested(currentFrameIndex) < minNumFramesRequested) {
             ++numRegisterFailed;
             keepCandidateForRetry(inst);
             continue;
@@ -2505,19 +2496,6 @@ namespace dxvk {
       }
     }
 
-    // Retain mode: build request statistics are no longer purged by frame age.
-    // They persist until the request passes the filter (erased in addNewOmmBuildRequest)
-    // or the instance is destroyed (erased in destroyInstance).
-    // Instead, auto-advance numFramesRequested so deferred candidates can
-    // accumulate enough "frames requested" to pass the filter without
-    // requiring per-frame registration calls.
-    for (auto& [hash, stats] : m_ommBuildRequestStatistics) {
-      if (currentFrameIndex != stats.lastRequestFrameId) {
-        stats.lastRequestFrameId = currentFrameIndex;
-        stats.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, stats.numFramesRequested);
-      }
-    }
-    
     // Account for OMM usage in BLASes in a previous TLAS
     // Tag the previously bound OMMs as used in this frame as well
     if (RtxOptions::enablePreviousTLAS()) {

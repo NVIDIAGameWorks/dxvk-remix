@@ -27,6 +27,14 @@
 
 namespace dxvk {
 
+// The default legacy material is rebuilt after an option it reads changed.
+// as() and the options' change callbacks both run on the CS thread.
+static bool s_defaultLegacyOpaqueMaterialChanged = true;
+
+void LegacyMaterialDefaults::onDefaultChanged(DxvkDevice*) {
+  s_defaultLegacyOpaqueMaterialChanged = true;
+}
+
 XXH64_hash_t LegacyMaterialData::computeIdentityHash() const {
   // Only fields consumed by determineMaterialData(), mergeLegacyMaterial(), and
   // InstanceManager surface alpha/blend setup. D3DMATERIAL9 constants, color-source
@@ -151,7 +159,12 @@ dxvk::OpaqueMaterialData LegacyMaterialData::createDefault() {
 
 template<> OpaqueMaterialData LegacyMaterialData::as() const {
   // Legacy materials have parameters that can directly carry over onto the opaque material.
-  const OpaqueMaterialData defaultLegacyOpaqueMaterial = createDefault();
+  // createDefault() rehashes the material in each of its setters, so it runs only after one of its options changed
+  static OpaqueMaterialData defaultLegacyOpaqueMaterial;
+  if (s_defaultLegacyOpaqueMaterialChanged) {
+    s_defaultLegacyOpaqueMaterialChanged = false;
+    defaultLegacyOpaqueMaterial = createDefault();
+  }
   // Copy off the defaults, and make dynamic adjustments for the remaining params from this legacy material
   OpaqueMaterialData opaqueMat(defaultLegacyOpaqueMaterial);
   if (LegacyMaterialDefaults::useAlbedoTextureIfPresent()) {
