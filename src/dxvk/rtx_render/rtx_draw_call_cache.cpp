@@ -48,20 +48,66 @@ DrawCallCache::DrawCallCache(DxvkDevice* device) : CommonDeviceObject(device) {
 DrawCallCache::~DrawCallCache() {}
 
 DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, BlasEntry** out) {
+  // A draw that matched an entry exactly before finds it without the bucket walk.
+  // The key hashes everything exactMatch compares.
+  const XXH64_hash_t fields[] = {
+    drawCall.cameraType == CameraType::Sky ? 1ull : 0ull,
+    drawCall.getMaterialData().getHash(),
+    drawCall.getGeometryData().getHashForRule<rules::FullGeometryHash>(),
+    drawCall.getSkinningState().boneHash
+  };
+  const XXH64_hash_t exactKey = XXH3_64bits(fields, sizeof(fields));
+  const auto indexed = m_exactMatchIndex.find(exactKey);
+  if (indexed != m_exactMatchIndex.end() && exactMatch(drawCall, *indexed->second)) {
+    *out = indexed->second;
+    return CacheState::kExisted;
+  }
+  const CacheState state = findInBucket(drawCall, out);
+  // New entries and exact matches go to the index, similar matches do not
+  if (exactMatch(drawCall, **out)) {
+    unindex(*out);
+    m_exactMatchIndex[exactKey] = *out;
+    m_exactMatchKeys[*out] = exactKey;
+  }
+  return state;
+}
+
+DrawCallCache::MultimapType::iterator DrawCallCache::erase(MultimapType::iterator iter) {
+  unindex(&iter->second);
+  return m_entries.erase(iter);
+}
+
+void DrawCallCache::unindex(const BlasEntry* entry) {
+  const auto key = m_exactMatchKeys.find(entry);
+  if (key == m_exactMatchKeys.end()) {
+    return;
+  }
+  // The slot may hold a later entry with the same key, which keeps it
+  const auto slot = m_exactMatchIndex.find(key->second);
+  if (slot != m_exactMatchIndex.end() && slot->second == entry) {
+    m_exactMatchIndex.erase(slot);
+  }
+  m_exactMatchKeys.erase(key);
+}
+
+DrawCallCache::CacheState DrawCallCache::findInBucket(const DrawCallState& drawCall, BlasEntry** out) {
   // First, find the right bucket:
   const XXH64_hash_t hash = drawCall.getGeometryData().getHashForRule<rules::TopologicalHash>();
-  auto range = m_entries.equal_range(hash);
-  if (range.first == m_entries.end()) {
+  // Not equal_range: it walks the whole bucket before returning.
+  // Entries with equal keys are adjacent, so the walks below start at find() and stop at the bucket end.
+  const auto first = m_entries.find(hash);
+  if (first == m_entries.end()) {
     // New bucket
     *out = allocateEntry(hash, drawCall);
     return CacheState::kNew;
   }
+  auto isInBucket = [this, hash](const MultimapType::iterator& iter) {
+    return iter != m_entries.end() && iter->first == hash;
+  };
   // Handle buckets with 1 entry:
-  auto iter = range.first;
-  iter++;
-  if (iter == range.second) {
+  if (!isInBucket(std::next(first))) {
     // Only 1 element
-    BlasEntry& entry = range.first->second;
+    BlasEntry& entry = first->second;
 
     const bool updatedThisFrame = entry.frameLastTouched == m_device->getCurrentFrameId();
     const bool vertexDataMatches = entry.input.getGeometryData().getHashForRule<rules::VertexDataHash>() == drawCall.getGeometryData().getHashForRule<rules::VertexDataHash>();
@@ -106,7 +152,7 @@ DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, Blas
   };
   const Vector3 newWorldPosition = pairingCentroid(drawCall);
 
-  for (auto bucketIter = range.first; bucketIter != range.second; bucketIter++) {
+  for (auto bucketIter = first; isInBucket(bucketIter); bucketIter++) {
     BlasEntry& blas  = bucketIter->second;
     if (exactMatch(drawCall, blas)) {
       *out = &blas;

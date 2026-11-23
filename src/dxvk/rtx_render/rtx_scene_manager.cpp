@@ -501,7 +501,7 @@ namespace dxvk {
             iter->second.getLinkedInstances().empty()) {
           unregisterGeometryBuffers(iter->second.modifiedGeometryData);
           m_accelManager.retireDynamicBlas(iter->second);
-          iter = entries.erase(iter);
+          iter = m_drawCallCache.erase(iter);
         } else {
           ++iter;
         }
@@ -718,6 +718,9 @@ namespace dxvk {
 
   void SceneManager::onFrameEnd(Rc<DxvkContext> ctx, bool raytracedThisFrame) {
     ScopedCpuProfileZone();
+
+    // Light conversions use replacements and rtx options, which change at frame end
+    m_convertedD3DLights.clear();
 
     if (m_gpuResidentScene != nullptr) {
       manageTextureVram();
@@ -1735,7 +1738,7 @@ namespace dxvk {
         for (auto iter = range.first; iter != range.second; ++iter) {
           if (&iter->second == pBlas) {
             unregisterGeometryBuffers(iter->second.modifiedGeometryData);
-            entries.erase(iter);
+            m_drawCallCache.erase(iter);
             break;
           }
         }
@@ -2298,17 +2301,77 @@ namespace dxvk {
 
   void SceneManager::addLight(const D3DLIGHT9& light) {
     ScopedCpuProfileZone();
-    // Attempt to convert the D3D9 light to RT
 
-    std::optional<LightData> lightData = LightData::tryCreate(light);
+    // Games set the same lights again for every model draw, so each light is converted once per frame
+    const XXH64_hash_t lightHash = hashStructByMemory<D3DLIGHT9,
+        &D3DLIGHT9::Type,
+        &D3DLIGHT9::Diffuse,
+        &D3DLIGHT9::Specular,
+        &D3DLIGHT9::Ambient,
+        &D3DLIGHT9::Position,
+        &D3DLIGHT9::Direction,
+        &D3DLIGHT9::Range,
+        &D3DLIGHT9::Falloff,
+        &D3DLIGHT9::Attenuation0,
+        &D3DLIGHT9::Attenuation1,
+        &D3DLIGHT9::Attenuation2,
+        &D3DLIGHT9::Theta,
+        &D3DLIGHT9::Phi>(light);
+    const auto [it, isNew] = m_convertedD3DLights.try_emplace(lightHash);
+
+    ConvertedD3DLight& converted = it->second;
+    if (isNew) {
+      // Attempt to convert the D3D9 light to RT
+      std::optional<LightData> lightData = LightData::tryCreate(light);
+      if (lightData.has_value()) {
+        converted.rtLight = lightData->toRtLight();
+        converted.pReplacements = m_pReplacer->getReplacementsForLight(converted.rtLight->getInitialHash());
+      }
+      if (converted.pReplacements) {
+        const Matrix4 lightTransform = LightUtils::getLightTransform(light);
+        AxisAlignedBoundingBox& litBBox = converted.replacementBoundingBox;
+        for (const auto& replacement : converted.pReplacements->replacements) {
+          if (replacement.type != AssetReplacement::eLight || !replacement.lightData.has_value()) {
+            converted.replacementLights.emplace_back();
+            continue;
+          }
+          LightData replacementLight = replacement.lightData.value();
+
+          // Merge the d3d9 light into replacements based on overrides.
+          // Must happen before AABB extraction: some entries (e.g. the translated
+          // original game light) have Unknown lightType and zero position/radius
+          // until merged with the d3d9 light.
+          replacementLight.merge(light);
+
+          // Convert to runtime light
+          RtLight rtReplacementLight = replacementLight.toRtLight();
+
+          const Vector3 pos = rtReplacementLight.getPosition();
+          float lightRadius = 0.f;
+          if (rtReplacementLight.getType() == RtLightType::Sphere) {
+            lightRadius = rtReplacementLight.getSphereLight().getRadius();
+          }
+          for (uint32_t j = 0; j < 3; j++) {
+            litBBox.minPos[j] = std::min(litBBox.minPos[j], pos[j] - lightRadius);
+            litBBox.maxPos[j] = std::max(litBBox.maxPos[j], pos[j] + lightRadius);
+          }
+
+          // Transform the replacement light by the legacy light
+          if (replacementLight.relativeTransform()) {
+            rtReplacementLight.applyTransform(lightTransform);
+          }
+          converted.replacementLights.emplace_back(rtReplacementLight);
+        }
+      }
+    }
 
     // Note: Skip adding this light if it is somehow malformed such that it could not be created.
-    if (!lightData.has_value()) {
+    if (!converted.rtLight.has_value()) {
       return;
     }
 
-    const RtLight rtLight = lightData->toRtLight();
-    const std::shared_ptr<const ReplacementBucket> pReplacements = m_pReplacer->getReplacementsForLight(rtLight.getInitialHash());
+    const RtLight& rtLight = *converted.rtLight;
+    const std::shared_ptr<const ReplacementBucket>& pReplacements = converted.pReplacements;
 
     // Build identity hash from the light's stable hash + position. Used by
     // both the replacement and the toggle-off cleanup paths below; must stay
@@ -2342,37 +2405,11 @@ namespace dxvk {
       // handling: create on first frame, update on subsequent frames.
       // TODO(TREX-1091) to implement meshes as light replacements, replace the below loop with a call to drawReplacements.
       const bool needsBBoxUpdate = replacementInstance->boundingBoxDirty;
-      AxisAlignedBoundingBox litBBox;
+      const AxisAlignedBoundingBox& litBBox = converted.replacementBoundingBox;
       for (size_t i = 0; i < pReplacements->replacements.size(); i++) {
         const auto& replacement = pReplacements->replacements[i];
         if (replacement.type == AssetReplacement::eLight && replacement.lightData.has_value()) {
-          LightData replacementLight = replacement.lightData.value();
-
-          // Merge the d3d9 light into replacements based on overrides.
-          // Must happen before AABB extraction: some entries (e.g. the translated
-          // original game light) have Unknown lightType and zero position/radius
-          // until merged with the d3d9 light.
-          replacementLight.merge(light);
-
-          // Convert to runtime light
-          RtLight rtReplacementLight = replacementLight.toRtLight();
-
-          if (needsBBoxUpdate) {
-            const Vector3 pos = rtReplacementLight.getPosition();
-            float lightRadius = 0.f;
-            if (rtReplacementLight.getType() == RtLightType::Sphere) {
-              lightRadius = rtReplacementLight.getSphereLight().getRadius();
-            }
-            for (uint32_t j = 0; j < 3; j++) {
-              litBBox.minPos[j] = std::min(litBBox.minPos[j], pos[j] - lightRadius);
-              litBBox.maxPos[j] = std::max(litBBox.maxPos[j], pos[j] + lightRadius);
-            }
-          }
-
-          // Transform the replacement light by the legacy light
-          if (replacementLight.relativeTransform()) {
-            rtReplacementLight.applyTransform(lightTransform);
-          }
+          const RtLight& rtReplacementLight = *converted.replacementLights[i];
 
           RtLight* existingLight = (replacementInstance->prims.size() > i)
               ? replacementInstance->prims[i].getLight() : nullptr;

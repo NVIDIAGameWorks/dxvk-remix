@@ -579,12 +579,25 @@ namespace dxvk {
 
     std::unordered_set<XXH64_hash_t> m_blackListedList;// Contains OMM surface hashes that failed to get baked or built (in time)
                                                  // and helps avoid wasting resources for such cases
-    
-    // Tracks statistics for OMM build requests to be able to filter less frequest requests out
+
+    // Tracks statistics for OMM build requests to be able to filter less frequest requests out.
+    // An OMM source waits here until it is requested often enough (minNumRequests) for long enough (minNumFramesRequested).
+    // Its entry is erased when it passes, or by clear().
     struct OMMBuildRequestStatistics {
-      uint16_t numFramesRequested = 0;
       uint16_t numTimesRequested = 0;
-      uint32_t lastRequestFrameId = kInvalidFrameIndex;
+      uint32_t firstRequestFrameId = 0;
+
+      void countRequest(uint32_t frameId) {
+        if (numTimesRequested == 0) {
+          firstRequestFrameId = frameId;
+        }
+        numTimesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, numTimesRequested);
+      }
+
+      // Frames from the first request to frameId, both included
+      uint32_t numFramesRequested(uint32_t frameId) const {
+        return frameId - firstRequestFrameId + 1;
+      }
     };
 
     uint32_t m_numMicroTrianglesBaked = 0;    // Per frame

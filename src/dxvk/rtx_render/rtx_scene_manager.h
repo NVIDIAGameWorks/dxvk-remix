@@ -502,6 +502,16 @@ private:
   // Mesh hash tracking for current frame (hash -> count)
   std::unordered_map<XXH64_hash_t, uint32_t> m_currentFrameMeshHashes;
 
+  // D3D9 lights converted this frame, keyed by a hash of the light
+  struct ConvertedD3DLight {
+    std::optional<RtLight> rtLight; // empty if the light could not be converted
+    std::shared_ptr<const ReplacementBucket> pReplacements;
+    // Per replacement: the merged and transformed light, empty if not a light
+    std::vector<std::optional<RtLight>> replacementLights;
+    AxisAlignedBoundingBox replacementBoundingBox;
+  };
+  fast_unordered_cache<ConvertedD3DLight> m_convertedD3DLights;
+
   DrawCallTracker m_drawCallTracker;
 };
 
