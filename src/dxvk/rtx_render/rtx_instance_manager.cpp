@@ -983,9 +983,10 @@ namespace dxvk {
     }
 
     // Dissolved draw calls are alpha tested against noise, see AlphaBlendDissolvePattern, instead of blended or fully opaque.
+    // A replacement dissolved by AlphaBlendDissolve::BlendedFade keeps its own blending on the pixels it keeps.
     const bool isDissolved = alphaBlendDissolve != AlphaBlendDissolve::None;
 
-    if (isDissolved) {
+    if (isDissolved && alphaBlendDissolve != AlphaBlendDissolve::BlendedFade) {
       blendEnabled = false;
     }
 

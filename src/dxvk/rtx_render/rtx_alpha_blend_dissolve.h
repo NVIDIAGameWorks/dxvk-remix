@@ -28,7 +28,9 @@ namespace dxvk {
   // Returns AlphaBlendDissolve::None when the draw call keeps its usual alpha handling.
   // isEye is the draw call's DrawCallState::isEye, passed in so that the rule depends only on its arguments.
   inline AlphaBlendDissolve calculateAlphaBlendDissolve(const DrawCallState& drawCall, bool isEye, const MaterialData& materialData) {
-    if (materialData.getType() != MaterialDataType::Opaque) {
+    const bool isTranslucent = materialData.getType() == MaterialDataType::Translucent;
+
+    if (materialData.getType() != MaterialDataType::Opaque && !isTranslucent) {
       return AlphaBlendDissolve::None;
     }
 
@@ -42,7 +44,7 @@ namespace dxvk {
 
     // Eye shading replaces the eye's material and opacity, so an eye's blend does not decide its coverage.
     // Games can pass an object's fade through the vertex alpha of software-lit meshes such as eyes.
-    if (isEye) {
+    if (isEye && !isTranslucent) {
       return AlphaBlendDissolve::VertexAlpha;
     }
 
@@ -62,12 +64,17 @@ namespace dxvk {
       return AlphaBlendDissolve::None;
     }
 
+    // A translucent replacement ignores the game's blend and alpha, so it dissolves by the game's fade and keeps its translucency.
+    if (isTranslucent) {
+      return AlphaBlendDissolve::TranslucentFade;
+    }
+
     const OpaqueMaterialData& opaqueMaterial = materialData.getOpaqueMaterialData();
 
     // A replacement that defines its own alpha state ignores the game's blend and alpha, so it dissolves by the game's fade,
     // and keeps its own blending if it authors any.
     if (!opaqueMaterial.getUseLegacyAlphaState()) {
-      return opaqueMaterial.getBlendEnabled() ? AlphaBlendDissolve::None : AlphaBlendDissolve::Fade;
+      return opaqueMaterial.getBlendEnabled() ? AlphaBlendDissolve::BlendedFade : AlphaBlendDissolve::Fade;
     }
 
     return legacyMaterial.textureFactorFade == TextureFactorFade::ModulateTexture

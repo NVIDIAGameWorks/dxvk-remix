@@ -562,6 +562,16 @@ float resolveVertex<T: IBasePayloadState>(
   else if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_TRANSLUCENT &&
            polymorphicType == surfaceMaterialTypeTranslucent)
   {
+    // A translucent surface dissolved by the game's fade lets rays through its cut pixels, see AlphaBlendDissolve::TranslucentFade.
+    // On the last resolve iteration a cut pixel is shaded as usual instead, like clipped surfaces, so the hit has a material.
+    if (translucentSurfaceIsAlphaBlendDissolveCut(surface, surfaceInteraction) && resolveVertexState.continueResolving)
+    {
+      // Note: Must call resolve final on any return which expects resolving to continue.
+      resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+
+      return 1.0f;
+    }
+
     const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
     TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =

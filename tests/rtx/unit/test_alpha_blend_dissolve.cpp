@@ -150,9 +150,14 @@ namespace dxvk {
       renderTarget.isUsingRaytracedRenderTarget = true;
       requireNotConverted(renderTarget, makeMaterial(true), "Render target surfaces must not dissolve.");
 
-      requireNotConverted(makeAlphaBlendDraw(), MaterialData(TranslucentMaterialData {}), "Translucent materials must not dissolve.");
+      require(calculateAlphaBlendDissolve(makeAlphaBlendDraw(), false, MaterialData(TranslucentMaterialData {})) == AlphaBlendDissolve::TranslucentFade,
+              "Faded translucent materials must dissolve by the game's fade.");
+      auto translucentNotFading = makeAlphaBlendDraw();
+      translucentNotFading.modifyMaterialData().tFactor = 0xffffffff;
+      requireNotConverted(translucentNotFading, MaterialData(TranslucentMaterialData {}), "Translucent materials the game does not fade must not dissolve.");
       requireNotConverted(makeAlphaBlendDraw(), MaterialData(RayPortalMaterialData {}), "Ray portals must not dissolve.");
-      requireNotConverted(makeAlphaBlendDraw(), makeMaterial(false, true), "Authored replacement blending must be kept.");
+      require(calculateAlphaBlendDissolve(makeAlphaBlendDraw(), false, makeMaterial(false, true)) == AlphaBlendDissolve::BlendedFade,
+              "Authored replacement blending must be kept on the pixels that the game's fade keeps.");
     }
 
     void testEyes() {
@@ -204,7 +209,8 @@ namespace dxvk {
     }
 
     // Only draw calls that the game fades and blends are converted. Under the legacy alpha state a replacement dissolves by the game's
-    // opacity, whatever its authored alpha test. A replacement with its own alpha state dissolves by the game's fade unless it blends on its own.
+    // opacity, whatever its authored alpha test. A replacement with its own alpha state dissolves by the game's fade, and keeps its
+    // own blending on the pixels it keeps if it authors any.
     void testReplacementMatrix() {
       const GameState states[] = { GameState::Opaque, GameState::BlendedNoFade, GameState::SelectFade,
                                    GameState::ModulateTextureFade, GameState::OpaqueModulateTexture };
@@ -222,8 +228,8 @@ namespace dxvk {
               if (legacyAlphaState && fading) {
                 expected = state == GameState::ModulateTextureFade ? AlphaBlendDissolve::TextureAlphaTimesTextureFactor
                                                                    : AlphaBlendDissolve::TextureFactor;
-              } else if (!legacyAlphaState && fading && !authoredBlend) {
-                expected = AlphaBlendDissolve::Fade;
+              } else if (!legacyAlphaState && fading) {
+                expected = authoredBlend ? AlphaBlendDissolve::BlendedFade : AlphaBlendDissolve::Fade;
               }
               require(mode == expected, "Wrong dissolve mode for the replacement matrix.");
             }
