@@ -36,6 +36,7 @@
 #include <rtx_shaders/particle_system_build_spawn_distribution.h>
 #include <rtx_shaders/particle_system_evolve.h>
 #include <rtx_shaders/particle_system_generate_geometry.h>
+#include <rtx_shaders/particle_system_populate_object_picking.h>
 #include "math.h"
 #include "rtx/pass/particles/particle_spawn_distribution.h"
 
@@ -108,6 +109,17 @@ namespace dxvk {
         SAMPLER2D(PARTICLE_SYSTEM_BINDING_ANIMATION_DATA_INPUT)
 
         RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT)
+        RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_OBJECT_PICKING_OUTPUT)
+        END_PARAMETER()
+    };
+
+    class ParticleSystemPopulateObjectPicking : public ManagedShader {
+      SHADER_SOURCE(ParticleSystemPopulateObjectPicking, VK_SHADER_STAGE_COMPUTE_BIT, particle_system_populate_object_picking)
+
+        PUSH_CONSTANTS(ParticleSystemPopulateObjectPickingArgs)
+
+        BEGIN_PARAMETER()
+        STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT)
         RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_OBJECT_PICKING_OUTPUT)
         END_PARAMETER()
     };
@@ -1256,9 +1268,11 @@ namespace dxvk {
 
       info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
       info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-      info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+      info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
       m_objectPickingSnapshot = pCtx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTX Particles - Object Picking Snapshot");
       pCtx->clearBuffer(m_objectPickingSnapshot, 0, size, kInvalidParticlePickingValue);
+
+      m_populateObjectPickingSnapshot = true;
     }
   }
 
@@ -1267,8 +1281,35 @@ namespace dxvk {
       return;
     }
 
+    if (m_populateObjectPickingSnapshot) {
+      m_populateObjectPickingSnapshot = false;
+      populateObjectPickingSnapshot(pCtx);
+      return;
+    }
+
     const VkDeviceSize size = std::min<VkDeviceSize>(VkDeviceSize(numParticles) * sizeof(uint32_t), m_objectPicking->info().size);
     pCtx->copyBuffer(m_objectPickingSnapshot, 0, m_objectPicking, 0, size);
+  }
+
+  // The particles are unchanged since the last geometry pass and each one has its emitter's picking id.
+  // Collecting them together in that pass's draw order matches the vertices the snapshot is drawn with.
+  void RtxParticleSystemManager::ParticleSystem::populateObjectPickingSnapshot(DxvkContext* pCtx) {
+    if (m_particles == nullptr || context.particleCount == 0) {
+      return;
+    }
+
+    ParticleSystemPopulateObjectPickingArgs args;
+    args.particleCount = std::min(context.particleCount, context.desc.maxNumParticles);
+    args.particleTailOffset = context.particleTailOffset;
+    args.maxNumParticles = context.desc.maxNumParticles;
+
+    pCtx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ParticleSystemPopulateObjectPicking::getShader());
+    pCtx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT, DxvkBufferSlice(m_particles));
+    pCtx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_OBJECT_PICKING_OUTPUT, DxvkBufferSlice(m_objectPickingSnapshot));
+    pCtx->pushConstants(0, sizeof(args), &args);
+
+    const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { args.particleCount, 1, 1 }, VkExtent3D { 128, 1, 1 });
+    pCtx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
 
   void RtxParticleSystemManager::ParticleSystem::allocStaticBuffers(DxvkContext* ctx) {

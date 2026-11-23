@@ -117,6 +117,13 @@ struct ParticleVertex {
   vec2 texcoord;
 };
 
+// Draw order of the last geometry pass
+struct ParticleSystemPopulateObjectPickingArgs {
+  uint particleCount;
+  uint particleTailOffset;
+  uint maxNumParticles;
+};
+
 
 #define PARTICLE_SYSTEM_BINDING_CONSTANTS                              50
 #define PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT   51

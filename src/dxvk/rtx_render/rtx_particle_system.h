@@ -96,6 +96,8 @@ namespace dxvk {
       Rc<DxvkBuffer> m_objectPicking;
       // Stores picking IDs in the draw order of the vertex snapshot taken in submitDrawState().
       Rc<DxvkBuffer> m_objectPickingSnapshot;
+      // Is set while the picking buffers have just been created by not populated by the geometry pass
+      bool m_populateObjectPickingSnapshot = false;
       Rc<ConservativeCounter> m_count;
       Resources::Resource m_animationState;
 
@@ -197,6 +199,9 @@ namespace dxvk {
       void allocStaticBuffers(DxvkContext* pCtx);
       void prepareObjectPickingBuffer(DxvkContext* pCtx, bool enabled);
       void snapshotObjectPickingBuffer(DxvkContext* pCtx, uint32_t numParticles);
+
+    private:
+      void populateObjectPickingSnapshot(DxvkContext* pCtx);
     };
 
     Rc<DxvkBuffer> m_cb;
