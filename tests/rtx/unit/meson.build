@@ -175,6 +175,11 @@ exe = executable('test_hot_reload', files('test_hot_reload.cpp'),
 test('test_hot_reload', exe, env: test_env)
 tests += exe
 
+exe = executable('test_light_gobo', files('test_light_gobo.cpp'),
+  include_directories : test_include_path, dependencies : [ test_unit_deps, d3d9_dep ], link_with: [ dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_light_gobo', exe, env: test_env)
+tests += exe
+
 exe = executable('test_transform_components',  files('test_transform_components.cpp'), 
   include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_transform_components', exe, env: test_env)

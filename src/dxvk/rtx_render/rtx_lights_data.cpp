@@ -41,6 +41,8 @@
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/base/gf/matrix4f.h>
 #include <pxr/base/gf/rotation.h>
+#include <pxr/base/gf/vec2d.h>
+#include <pxr/base/gf/vec2f.h>
 #include <pxr/usd/usdLux/sphereLight.h>
 #include <pxr/usd/usdLux/rectLight.h>
 #include <pxr/usd/usdLux/diskLight.h>
@@ -76,9 +78,30 @@
       } \
       m_##name = clamp(m_##name, minVal, maxVal);
 
+#define WRITE_GOBO_MERGE(name, usd_attr, member) \
+      if (!m_dirty.test(DirtyFlags::k_Gobo##name)) { \
+        m_gobo.member = input.m_gobo.member; \
+      }
+
+#define WRITE_GOBO_DESERIALIZER(name, usd_attr, member) \
+      { \
+        static const pxr::TfToken token("inputs:shaping:gobo:" #usd_attr); \
+        if (readGoboAttribute(prim, token, m_gobo.member)) { \
+          m_dirty.set(DirtyFlags::k_Gobo##name); \
+        } \
+      }
+
 namespace dxvk {
 
   RtLight LightData::toRtLight() const {
+    RtLight light = createRtLight();
+
+    attachGobo(light);
+
+    return light;
+  }
+
+  RtLight LightData::createRtLight() const {
     switch (m_lightType) {
     // Note: This default case should never be hit as an Unknown light type must be merged before it should be converted to LightData,
     // the assert is here just for debugging to assert when an unexpected light type is passed in (so this is an "unreachable"-style assert).
@@ -172,6 +195,18 @@ namespace dxvk {
       m_yScale = input.m_yScale;
       m_zScale = input.m_zScale;
     }
+
+    // Note: A gobo authored as an override on a captured light keeps its dirty flags, so the merge does not clear it.
+    if (!m_dirty.test(DirtyFlags::k_GoboTexture)) {
+      m_gobo.texture = input.m_gobo.texture;
+    }
+
+    LIST_GOBO_CONSTANTS(WRITE_GOBO_MERGE);
+
+    // Note: A source light with a gobo can change the merged gobo, so the copies of this light data no longer share it.
+    if (input.m_gobo.texture.isValid()) {
+      m_goboCache = std::make_shared<GoboCache>();
+    }
   }
 
   std::optional<LightData> LightData::tryCreate(const D3DLIGHT9& light) {
@@ -259,6 +294,183 @@ namespace dxvk {
       }
 
       return true;
+    }
+
+    // The USD attribute of a light gobo's texture. Unlike the attributes in LIST_LIGHT_CONSTANTS,
+    // the gobo attributes have no legacy spelling without the inputs: prefix.
+    const pxr::TfToken kGoboFileToken("inputs:shaping:gobo:file");
+
+    // Limits that keep the gobo's packed values finite and within their bits.
+    constexpr float kGoboMaxUvTransform = 100.0f;
+    constexpr float kGoboMinFovRadians = 1.0f * kDegreesToRadians;
+    constexpr float kGoboMaxFovRadians = 179.0f * kDegreesToRadians;
+    constexpr float kGoboMinAspect = 0.01f;
+    constexpr float kGoboMaxAspect = 100.0f;
+    constexpr float kGoboMaxRotationSpeedDegrees = 36000.0f;
+    constexpr float kGoboMaxShakeAngleDegrees = 180.0f;
+    constexpr float kGoboMaxShakeFrequency = 100.0f;
+    constexpr float kGoboMaxTimeOffset = 86400.0f;
+    constexpr uint32_t kGoboMaxSpriteSheetSize = 255;
+    constexpr uint32_t kGoboMaxFrames = kGoboMaxSpriteSheetSize * kGoboMaxSpriteSheetSize;
+
+    void warnGoboType(const pxr::UsdPrim& prim, const pxr::TfToken& token, const char* expected) {
+      Logger::warn(str::format("Ignoring USD attribute \'", token.GetString(), "\' on \'", prim.GetName().GetString(), "\', it must be ", expected, "."));
+    }
+
+    void warnGoboNan(const pxr::UsdPrim& prim, const pxr::TfToken& token) {
+      Logger::warn(str::format("Invalid value (NaN) detected on USD attribute \'", token.GetString(), "\' on \'", prim.GetName().GetString(), "\'"));
+    }
+
+    // Returns true when the attribute holds a number.
+    bool readGoboAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, float& value) {
+      pxr::VtValue val;
+      prim.GetAttribute(token).Get(&val);
+
+      float number = 0.0f;
+      if (val.IsHolding<float>()) {
+        number = val.UncheckedGet<float>();
+      } else if (val.IsHolding<double>()) {
+        number = static_cast<float>(val.UncheckedGet<double>());
+      } else if (val.IsHolding<int>()) {
+        number = static_cast<float>(val.UncheckedGet<int>());
+      } else if (val.IsHolding<unsigned int>()) {
+        number = static_cast<float>(val.UncheckedGet<unsigned int>());
+      } else if (val.IsHolding<unsigned char>()) {
+        number = static_cast<float>(val.UncheckedGet<unsigned char>());
+      } else {
+        if (!val.IsEmpty()) {
+          warnGoboType(prim, token, "a number");
+        }
+        return false;
+      }
+
+      if (std::isnan(number)) {
+        warnGoboNan(prim, token);
+        return false;
+      }
+
+      value = number;
+      return true;
+    }
+
+    // Returns true when the attribute holds a number, which is cut to a whole number of zero or more.
+    bool readGoboAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, uint32_t& value) {
+      float number = 0.0f;
+      if (!readGoboAttribute(prim, token, number)) {
+        return false;
+      }
+
+      value = static_cast<uint32_t>(std::clamp(number, 0.0f, static_cast<float>(kGoboMaxFrames)));
+      return true;
+    }
+
+    // Returns true when the attribute holds a float2 or a double2.
+    bool readGoboAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, Vector2& value) {
+      pxr::VtValue val;
+      prim.GetAttribute(token).Get(&val);
+
+      Vector2 vector;
+      if (val.IsHolding<pxr::GfVec2f>()) {
+        const pxr::GfVec2f& vec = val.UncheckedGet<pxr::GfVec2f>();
+        vector = Vector2(vec[0], vec[1]);
+      } else if (val.IsHolding<pxr::GfVec2d>()) {
+        const pxr::GfVec2d& vec = val.UncheckedGet<pxr::GfVec2d>();
+        vector = Vector2(static_cast<float>(vec[0]), static_cast<float>(vec[1]));
+      } else {
+        if (!val.IsEmpty()) {
+          warnGoboType(prim, token, "a float2");
+        }
+        return false;
+      }
+
+      if (std::isnan(vector.x) || std::isnan(vector.y)) {
+        warnGoboNan(prim, token);
+        return false;
+      }
+
+      value = vector;
+      return true;
+    }
+
+    // Returns true when the attribute holds a bool or an int.
+    bool readGoboAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, bool& value) {
+      pxr::VtValue val;
+      prim.GetAttribute(token).Get(&val);
+
+      if (val.IsHolding<bool>()) {
+        value = val.UncheckedGet<bool>();
+      } else if (val.IsHolding<int>()) {
+        value = val.UncheckedGet<int>() != 0;
+      } else {
+        if (!val.IsEmpty()) {
+          warnGoboType(prim, token, "a bool");
+        }
+        return false;
+      }
+
+      return true;
+    }
+
+    template<typename T>
+    struct GoboTokenValue {
+      const char* name;
+      T value;
+    };
+
+    // Returns true when the attribute holds one of the names as a token or a string.
+    template<typename T, size_t N>
+    bool readGoboToken(const pxr::UsdPrim& prim, const pxr::TfToken& token, const GoboTokenValue<T> (&choices)[N], const char* expected, T& value) {
+      pxr::VtValue val;
+      prim.GetAttribute(token).Get(&val);
+
+      if (val.IsEmpty()) {
+        return false;
+      }
+
+      std::string name;
+      if (val.IsHolding<pxr::TfToken>()) {
+        name = val.UncheckedGet<pxr::TfToken>().GetString();
+      } else if (val.IsHolding<std::string>()) {
+        name = val.UncheckedGet<std::string>();
+      }
+
+      for (const GoboTokenValue<T>& choice : choices) {
+        if (name == choice.name) {
+          value = choice.value;
+          return true;
+        }
+      }
+
+      warnGoboType(prim, token, expected);
+      return false;
+    }
+
+    bool readGoboAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, RtLightGoboWrapMode& value) {
+      static constexpr GoboTokenValue<RtLightGoboWrapMode> kChoices[] = {
+        { "clamp", RtLightGoboWrapMode::Clamp },
+        { "repeat", RtLightGoboWrapMode::Repeat },
+        { "mirror", RtLightGoboWrapMode::Mirror },
+        { "extend", RtLightGoboWrapMode::Extend },
+      };
+      return readGoboToken(prim, token, kChoices, "clamp, repeat, mirror or extend", value);
+    }
+
+    bool readGoboAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, RtLightGoboLoopMode& value) {
+      static constexpr GoboTokenValue<RtLightGoboLoopMode> kChoices[] = {
+        { "loop", RtLightGoboLoopMode::Loop },
+        { "once", RtLightGoboLoopMode::Once },
+        { "ping_pong", RtLightGoboLoopMode::PingPong },
+        { "random", RtLightGoboLoopMode::Random },
+      };
+      return readGoboToken(prim, token, kChoices, "loop, once, ping_pong or random", value);
+    }
+
+    bool readGoboAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, RtLightGoboColorSpace& value) {
+      static constexpr GoboTokenValue<RtLightGoboColorSpace> kChoices[] = {
+        { "auto", RtLightGoboColorSpace::Auto },
+        { "srgb", RtLightGoboColorSpace::Srgb },
+      };
+      return readGoboToken(prim, token, kChoices, "auto or srgb", value);
     }
   } // anonymous namespace
   
@@ -616,6 +828,8 @@ namespace dxvk {
       m_AngleRadians *= kDegreesToRadians;
     }
 
+    deserializeGobo(prim);
+
     // If this light is fully defined (i.e. a child light) then we need to use all attributes
     if (prim.GetSpecifier() == pxr::SdfSpecifier::SdfSpecifierDef) {
       m_dirty = m_allDirty;
@@ -650,8 +864,96 @@ namespace dxvk {
     LIST_LIGHT_CONSTANTS(WRITE_CONSTANT_SANITIZATION)
   }
 
+  const pxr::TfToken& LightData::getGoboFileToken() {
+    return kGoboFileToken;
+  }
+
+  void LightData::setGoboTexture(const TextureRef& texture) {
+    m_gobo.texture = texture;
+    m_dirty.set(DirtyFlags::k_GoboTexture);
+    m_goboCache = std::make_shared<GoboCache>();
+  }
+
+  void LightData::deserializeGobo(const pxr::UsdPrim& prim) {
+    LIST_GOBO_CONSTANTS(WRITE_GOBO_DESERIALIZER);
+
+    if (!std::isfinite(m_gobo.rotationRadians)) {
+      m_gobo.rotationRadians = 0.0f;
+      m_dirty.clr(DirtyFlags::k_GoboRotation);
+    }
+
+    m_gobo.scale = clamp(m_gobo.scale, Vector2(-kGoboMaxUvTransform), Vector2(kGoboMaxUvTransform));
+    m_gobo.offset = clamp(m_gobo.offset, Vector2(-kGoboMaxUvTransform), Vector2(kGoboMaxUvTransform));
+    m_gobo.scrollSpeed = clamp(m_gobo.scrollSpeed, Vector2(-kGoboMaxUvTransform), Vector2(kGoboMaxUvTransform));
+
+    // Note: USD specifies angles in degrees, but we prefer radians.
+    m_gobo.rotationRadians = std::fmod(m_gobo.rotationRadians, 360.0f) * kDegreesToRadians;
+    m_gobo.rotationSpeedRadians = std::clamp(m_gobo.rotationSpeedRadians, -kGoboMaxRotationSpeedDegrees, kGoboMaxRotationSpeedDegrees) * kDegreesToRadians;
+    m_gobo.shakeAngleRadians = std::clamp(m_gobo.shakeAngleRadians, 0.0f, kGoboMaxShakeAngleDegrees) * kDegreesToRadians;
+    // Note: A field of view of zero or less selects the default of twice the cone angle.
+    m_gobo.fovRadians = std::max(m_gobo.fovRadians, 0.0f) * kDegreesToRadians;
+
+    // Note: An aspect of zero or less selects the image's own aspect.
+    m_gobo.aspect = m_gobo.aspect > 0.0f ? std::clamp(m_gobo.aspect, kGoboMinAspect, kGoboMaxAspect) : 0.0f;
+    m_gobo.strength = std::clamp(m_gobo.strength, 0.0f, 1.0f);
+    m_gobo.shakeFrequency = std::clamp(m_gobo.shakeFrequency, 0.0f, kGoboMaxShakeFrequency);
+    m_gobo.timeOffset = std::clamp(m_gobo.timeOffset, -kGoboMaxTimeOffset, kGoboMaxTimeOffset);
+    m_gobo.timeOffsetRandom = std::clamp(m_gobo.timeOffsetRandom, 0.0f, kGoboMaxTimeOffset);
+
+    // Note: Like material sprite sheets, zero rows or columns act as one.
+    m_gobo.spriteSheetRows = std::clamp(m_gobo.spriteSheetRows, 1u, kGoboMaxSpriteSheetSize);
+    m_gobo.spriteSheetCols = std::clamp(m_gobo.spriteSheetCols, 1u, kGoboMaxSpriteSheetSize);
+    m_gobo.spriteSheetFps = std::clamp(m_gobo.spriteSheetFps, -static_cast<float>(kGoboMaxSpriteSheetSize), static_cast<float>(kGoboMaxSpriteSheetSize));
+  }
+
+  void LightData::attachGobo(RtLight& light) const {
+    if (!m_gobo.texture.isValid()) {
+      return;
+    }
+
+    // Note: The gobo is projected along the shaping axis, so only sphere lights with shaping can carry one.
+    if (m_lightType != LightType::Sphere || !isShapingEnabled()) {
+      ONCE(Logger::warn("Ignoring a light gobo on a light that is not a sphere light with shaping. Light gobos are only supported on sphere lights with shaping."));
+      return;
+    }
+
+    const float fovRadians = std::clamp(m_gobo.fovRadians > 0.0f ? m_gobo.fovRadians : 2.0f * std::abs(m_ConeAngleRadians), kGoboMinFovRadians, kGoboMaxFovRadians);
+
+    // Note: The field of view is the only part of the gobo that depends on the light it is merged with.
+    std::shared_ptr<const RtLightGobo> gobo;
+    if (m_goboCache != nullptr) {
+      std::lock_guard<std::mutex> lock(m_goboCache->mutex);
+      if (m_goboCache->gobo != nullptr && m_goboCache->gobo->fovRadians == fovRadians) {
+        gobo = m_goboCache->gobo;
+      }
+    }
+
+    if (gobo == nullptr) {
+      auto newGobo = std::make_shared<RtLightGobo>(m_gobo);
+      newGobo->fovRadians = fovRadians;
+
+      if (!newGobo->isWrapping() && (newGobo->scrollSpeed.x != 0.0f || newGobo->scrollSpeed.y != 0.0f)) {
+        ONCE(Logger::warn("Ignoring the scroll speed of a light gobo. Scrolling needs a wrap mode of repeat or mirror."));
+      }
+
+      gobo = std::move(newGobo);
+
+      if (m_goboCache != nullptr) {
+        std::lock_guard<std::mutex> lock(m_goboCache->mutex);
+        m_goboCache->gobo = gobo;
+      }
+    }
+
+    // Note: The light's local Y axis orients the gobo, so a gobo is turned by rotating the light.
+    // A captured light has no orientation, so its image is upright in the scene.
+    const Vector3 sceneUp = RtxOptions::zUp() ? Vector3(0.0f, 0.0f, 1.0f) : Vector3(0.0f, 1.0f, 0.0f);
+    light.setGobo(std::move(gobo), m_dirty.test(DirtyFlags::k_Transform) ? m_yAxis : sceneUp);
+  }
+
 } // namespace dxvk
 
+#undef WRITE_GOBO_MERGE
+#undef WRITE_GOBO_DESERIALIZER
 #undef WRITE_CTOR_INIT
 #undef WRITE_CONSTANT_DESERIALIZER
 #undef WRITE_PARAMETER_MERGE

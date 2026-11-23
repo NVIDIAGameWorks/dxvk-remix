@@ -25,6 +25,13 @@
 
 static const float lightWeightEpsilon = 1e-10f;
 static const float lightSamplingEpsilon = 1e-10f;
+// Note: Froxels are much coarser than pixels, so volumes sample light gobos at a blurrier mip level.
+static const float lightGoboVolumeLodBias = 2.0f;
+// Note: The frames over which volumetric lighting blends in the cone of an animated gobo, which is the inverse of the
+// weight the integrator gives a new frame.
+static const float lightGoboVolumeHistoryFrames = 10.0f;
+// Note: The volume integrator weighs a new frame with 1 / (stored history age + this offset).
+static const float lightGoboVolumeHistoryAgeOffset = 6.0f;
 
 // Light Helper Structures
 

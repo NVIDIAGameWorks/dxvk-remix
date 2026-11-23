@@ -24,6 +24,7 @@
 #include "rtx_light_manager.h"
 #include "rtx_light_utils.h"
 #include "rtx_global_volumetrics.h"
+#include "../../util/util_global_time.h"
 
 namespace dxvk {
 
@@ -89,6 +90,190 @@ constexpr float kOrthogonalityThreshold = 0.01f;
     writeGPUHelper(data, offset, volumetricRadianceScale);
   }
 
+  // Keeps the half precision UV scale finite. An image scaled this far is smaller than a pixel.
+  constexpr float kGoboMaxUvScale = 65000.0f;
+  constexpr float kGoboMinImageAspect = 0.01f;
+  constexpr float kGoboMaxImageAspect = 100.0f;
+  constexpr double kGoboTwoPi = 6.283185307179586476925;
+
+  int64_t positiveModulo(const int64_t value, const int64_t divisor) {
+    const int64_t remainder = value % divisor;
+    return remainder < 0 ? remainder + divisor : remainder;
+  }
+
+  bool isOneChannelFormat(const VkFormat format) {
+    switch (format) {
+    case VK_FORMAT_R8_UNORM:
+    case VK_FORMAT_R8_SNORM:
+    case VK_FORMAT_R8_SRGB:
+    case VK_FORMAT_R16_UNORM:
+    case VK_FORMAT_R16_SNORM:
+    case VK_FORMAT_R16_SFLOAT:
+    case VK_FORMAT_R32_SFLOAT:
+    case VK_FORMAT_BC4_UNORM_BLOCK:
+    case VK_FORMAT_BC4_SNORM_BLOCK:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  bool isSrgbFormat(const VkFormat format) {
+    switch (format) {
+    case VK_FORMAT_R8_SRGB:
+    case VK_FORMAT_R8G8B8A8_SRGB:
+    case VK_FORMAT_B8G8R8A8_SRGB:
+    case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+    case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+    case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+    case VK_FORMAT_BC2_SRGB_BLOCK:
+    case VK_FORMAT_BC3_SRGB_BLOCK:
+    case VK_FORMAT_BC7_SRGB_BLOCK:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+}
+
+double RtLightGobo::getTimeOffset(const uint32_t seed) const {
+  if (timeOffsetRandom <= 0.0f) {
+    return timeOffset;
+  }
+
+  const double random = static_cast<double>(XXH64(&seed, sizeof(seed), 0) >> 32) / 4294967296.0;
+  return timeOffset + timeOffsetRandom * random;
+}
+
+uint32_t RtLightGobo::getPlayedFrameCount() const {
+  const uint32_t cellCount = spriteSheetRows * spriteSheetCols;
+  const uint32_t availableCount = cellCount - std::min(spriteSheetFirstFrame, cellCount - 1);
+
+  return spriteSheetFrameCount == 0 ? availableCount : std::min(spriteSheetFrameCount, availableCount);
+}
+
+RtLightGoboFrames RtLightGobo::getFrames(const double timeSeconds, const uint32_t seed) const {
+  const uint32_t firstCell = std::min(spriteSheetFirstFrame, spriteSheetRows * spriteSheetCols - 1);
+  const uint32_t frameCount = getPlayedFrameCount();
+
+  if (spriteSheetFps == 0.0f || frameCount <= 1) {
+    return { firstCell, firstCell, 0.0f };
+  }
+
+  const float framesPerSecond = std::abs(spriteSheetFps);
+
+  // Note: Without blending this is the single precision math of calcSpritesheetValues in surface_interaction.slangh,
+  // so a gobo and a material that share a sheet switch frames together. Blending needs double precision to stay smooth.
+  const double position = spriteSheetBlend
+    ? timeSeconds * framesPerSecond
+    : static_cast<double>(static_cast<float>(timeSeconds) * framesPerSecond);
+  const int64_t step = static_cast<int64_t>(std::floor(position));
+
+  const auto getCell = [&](const int64_t stepIndex) {
+    const int64_t count = frameCount;
+    int64_t frame = 0;
+
+    switch (spriteSheetLoopMode) {
+    case RtLightGoboLoopMode::Loop:
+      frame = positiveModulo(stepIndex, count);
+      break;
+    case RtLightGoboLoopMode::Once:
+      frame = std::clamp<int64_t>(stepIndex, 0, count - 1);
+      break;
+    case RtLightGoboLoopMode::PingPong:
+      // Note: The first and last frames show once per round trip.
+      frame = positiveModulo(stepIndex, 2 * count - 2);
+      frame = std::min(frame, 2 * count - 2 - frame);
+      break;
+    case RtLightGoboLoopMode::Random:
+      frame = static_cast<int64_t>(XXH64(&stepIndex, sizeof(stepIndex), seed) % frameCount);
+      break;
+    }
+
+    if (spriteSheetFps < 0.0f) {
+      frame = count - 1 - frame;
+    }
+
+    return firstCell + static_cast<uint32_t>(frame);
+  };
+
+  RtLightGoboFrames frames;
+  frames.cell = getCell(step);
+  frames.nextCell = frames.cell;
+
+  if (spriteSheetBlend) {
+    frames.nextCell = getCell(step + 1);
+    frames.blend = frames.nextCell == frames.cell ? 0.0f : static_cast<float>(position - std::floor(position));
+  }
+
+  return frames;
+}
+
+Vector2 RtLightGobo::getOffset(const double timeSeconds) const {
+  if (!isWrapping()) {
+    return offset;
+  }
+
+  // Note: Wrapping in double precision keeps scrolling exact for any length of play.
+  const double period = wrapMode == RtLightGoboWrapMode::Mirror ? 2.0 : 1.0;
+  const auto wrap = [period](const double value) {
+    return static_cast<float>(value - period * std::floor(value / period));
+  };
+
+  return Vector2(wrap(offset.x + scrollSpeed.x * timeSeconds), wrap(offset.y + scrollSpeed.y * timeSeconds));
+}
+
+float RtLightGobo::getRotationRadians(const double timeSeconds) const {
+  const bool isShaking = shakeAngleRadians != 0.0f && shakeFrequency != 0.0f;
+
+  if (rotationSpeedRadians == 0.0f && !isShaking) {
+    return rotationRadians;
+  }
+
+  double rotation = std::fmod(rotationRadians + rotationSpeedRadians * timeSeconds, kGoboTwoPi);
+
+  if (isShaking) {
+    rotation += shakeAngleRadians * std::sin(kGoboTwoPi * std::fmod(shakeFrequency * timeSeconds, 1.0));
+  }
+
+  return static_cast<float>(rotation);
+}
+
+float RtLightGobo::getAspect(const uint32_t textureWidth, const uint32_t textureHeight) const {
+  if (aspect > 0.0f) {
+    return aspect;
+  }
+
+  const uint64_t cellWidth = static_cast<uint64_t>(textureWidth) * spriteSheetRows;
+  const uint64_t cellHeight = static_cast<uint64_t>(textureHeight) * spriteSheetCols;
+
+  if (cellWidth == 0 || cellHeight == 0) {
+    return 1.0f;
+  }
+
+  return std::clamp(static_cast<float>(static_cast<double>(cellWidth) / cellHeight), kGoboMinImageAspect, kGoboMaxImageAspect);
+}
+
+bool RtLightGobo::isAnimated(const double playTimeSeconds) const {
+  if (strength <= 0.0f) {
+    return false;
+  }
+
+  const bool isScrolling = isWrapping() && (scrollSpeed.x != 0.0f || scrollSpeed.y != 0.0f);
+  const bool isShaking = shakeAngleRadians != 0.0f && shakeFrequency != 0.0f;
+
+  if (isScrolling || isShaking || rotationSpeedRadians != 0.0f) {
+    return true;
+  }
+
+  const uint32_t frameCount = getPlayedFrameCount();
+
+  if (spriteSheetFps == 0.0f || frameCount <= 1) {
+    return false;
+  }
+
+  return spriteSheetLoopMode != RtLightGoboLoopMode::Once || playTimeSeconds * std::abs(spriteSheetFps) < frameCount;
 }
 
 RtLightShaping::RtLightShaping(bool enabled, Vector3 direction, float cosConeAngle, float coneSoftness, float focusExponent)
@@ -238,7 +423,7 @@ void RtSphereLight::applyTransform(const Matrix4& lightToWorld) {
   updateCachedHash();
 }
 
-void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
+void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset, const RtLightGoboGPUData* pGobo) const {
   [[maybe_unused]] const std::size_t oldOffset = offset;
 
   writeGPUHelper(data, offset, m_position.x);
@@ -246,19 +431,61 @@ void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const
   writeGPUHelper(data, offset, m_position.z);
   assert(m_radius < FLOAT16_MAX);
   writeGPUHelper(data, offset, glm::packHalf1x16(m_radius));
-  writeGPUPadding<2>(data, offset);
+
+  if (pGobo != nullptr) {
+    assert(pGobo->textureIndex < BINDING_INDEX_INVALID);
+    writeGPUHelper(data, offset, static_cast<uint16_t>(pGobo->textureIndex));
+  } else {
+    writeGPUPadding<2>(data, offset);
+  }
 
   writeGPUHelper(data, offset, packLogLuv32(m_radiance));
 
   m_shaping.writeGPUData(data, offset);
 
-  writeGPUPadding<24>(data, offset);
+  if (pGobo != nullptr) {
+    // Note: The gobo occupies data2, data3.xy and bits 3 to 9 of the flags, see lightGoboCreate in light_shaping.slangh.
+    assert(m_shaping.getEnabled());
+    assert(std::abs(pGobo->uvScale.x) < FLOAT16_MAX && std::abs(pGobo->uvScale.y) < FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packSnorm1x16(pGobo->tangent.x));
+    writeGPUHelper(data, offset, glm::packSnorm1x16(pGobo->tangent.y));
+    writeGPUHelper(data, offset, glm::packSnorm1x16(pGobo->tangent.z));
+    writeGPUPadding<2>(data, offset);
+    writeGPUHelper(data, offset, glm::packHalf1x16(pGobo->uvScale.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(pGobo->uvScale.y));
+
+    const bool isRepeat = pGobo->wrapMode == RtLightGoboWrapMode::Repeat;
+    const bool isMirror = pGobo->wrapMode == RtLightGoboWrapMode::Mirror;
+
+    for (const float uvOffset : { pGobo->uvOffset.x, pGobo->uvOffset.y }) {
+      if (isRepeat || isMirror) {
+        // Note: A fraction of the wrap period has uniform precision, where a half float would make slow scrolling step.
+        // The cast wraps a fraction that rounds up to a whole period to zero.
+        const double period = isMirror ? 2.0 : 1.0;
+        writeGPUHelper(data, offset, static_cast<uint16_t>(std::llround(uvOffset / period * 65536.0)));
+      } else {
+        assert(std::abs(uvOffset) < FLOAT16_MAX);
+        writeGPUHelper(data, offset, glm::packHalf1x16(uvOffset));
+      }
+    }
+
+    writeGPUHelperExplicit<1>(data, offset, pGobo->spriteSheetCols);
+    writeGPUHelperExplicit<1>(data, offset, pGobo->spriteSheetRows);
+    // Note: The blend has 256 steps and never reaches one, as the next step starts at the next cell.
+    writeGPUHelperExplicit<1>(data, offset, std::min(static_cast<uint32_t>(pGobo->frames.blend * 256.0f), 255u));
+    writeGPUHelperExplicit<1>(data, offset, static_cast<uint32_t>(std::lround(pGobo->strength * 255.0f)));
+    writeGPUHelperExplicit<2>(data, offset, pGobo->frames.cell);
+    writeGPUHelperExplicit<2>(data, offset, pGobo->frames.nextCell);
+  } else {
+    writeGPUPadding<24>(data, offset);
+  }
 
   writeGPUDataVolumetricRadianceScale(data, oldOffset, offset, m_volumetricRadianceScale);
 
   // Note: Sphere light type (0) + shaping enabled flag
   uint32_t flags = lightTypeSphere << 29; // Light Type at bits 29,30,31.
   flags |= m_shaping.getEnabled() ? 1 << 0 : 0 << 0; // Shaping enabled flag at bit 0
+  flags |= pGobo != nullptr ? pGobo->flags : 0; // Gobo flag and options at bits 3 to 9
   writeGPUHelper(data, offset, flags);
 
   assert(offset - oldOffset == kLightGPUSize);
@@ -1002,6 +1229,13 @@ void RtLight::copyFrom(const RtLight& light) {
   m_bufferIdx = light.m_bufferIdx;
   m_isMarkedForGarbageCollection = light.m_isMarkedForGarbageCollection;
   m_anticullingType = light.m_anticullingType;
+  m_gobo = light.m_gobo;
+  m_goboUp = light.m_goboUp;
+  m_goboTextureIndex = light.m_goboTextureIndex;
+  m_goboTextureWidth = light.m_goboTextureWidth;
+  m_goboTextureHeight = light.m_goboTextureHeight;
+  m_goboTextureIsGrayscale = light.m_goboTextureIsGrayscale;
+  m_goboTextureIsSrgb = light.m_goboTextureIsSrgb;
   
   // Copy anti-culling union members safely based on the anti-culling type
   switch (light.m_anticullingType) {
@@ -1020,6 +1254,7 @@ void RtLight::copyFrom(const RtLight& light) {
   // Members for which state carry over is intentionally skipped
   /*
      m_primInstanceOwner - contents depends on the address of the holding object
+     m_goboStartTimeUs - belongs to the holding object, so updates do not restart the gobo's flipbook
   */
 }
 // Ensure copyFrom copies all needed members when size changes, and update the object size check.
@@ -1029,7 +1264,7 @@ void RtLight::copyFrom(const RtLight& light) {
 namespace {
   template<int RtLightSize> struct CheckRtLightSize {
     // The second line of the build error should contain the new size of RtLight in the template argument, i.e. `dxvk::CheckRtLightSize<newSize>`
-    static_assert(RtLightSize == 272, "RtLight size has changed.  Fix the copyFrom function above this message, then update the expected size.");
+    static_assert(RtLightSize == 320, "RtLight size has changed.  Fix the copyFrom function above this message, then update the expected size.");
   };
   CheckRtLightSize<sizeof(RtLight)> _rtLightSizeTest;
 }
@@ -1092,17 +1327,168 @@ void RtLight::applyTransform(const Matrix4& lightToWorld) {
     m_distantLight.applyTransform(lightToWorld);
     break;
   }
+
+  if (m_gobo != nullptr) {
+    m_goboUp = safeNormalize(Matrix3(lightToWorld) * m_goboUp, Vector3(0.0f, 1.0f, 0.0f));
+  }
 }
 
-void RtLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
+void RtLight::levelGoboUp(const Matrix4& parentToWorld, const Vector3& sceneUp) {
+  if (m_gobo == nullptr || m_type != RtLightType::Sphere || !m_sphereLight.getShaping().getEnabled()) {
+    return;
+  }
+
+  // Note: A parent that points along the scene's up axis has an orientation that does not depend on its direction,
+  // so its children keep the orientation they were authored with.
+  const Matrix3 parentRotation(parentToWorld);
+  const Vector3 parentAxis = safeNormalize(parentRotation * Vector3(0.0f, 0.0f, -1.0f), Vector3(0.0f, 0.0f, -1.0f));
+  if (lengthSqr(sceneUp - parentAxis * dot(sceneUp, parentAxis)) < 1e-4f) {
+    return;
+  }
+
+  // The parent's Y axis is upright in the parent's frame, so the light keeps the roll it has against it.
+  const Vector3& axis = m_sphereLight.getShaping().getDirection();
+  const Vector3 parentUp = safeNormalize(parentRotation * Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f));
+  Vector3 from = parentUp - axis * dot(parentUp, axis);
+  Vector3 to = sceneUp - axis * dot(sceneUp, axis);
+
+  // Note: A light within about half a degree of either up vector has no upright orientation to keep.
+  if (lengthSqr(from) < 1e-4f || lengthSqr(to) < 1e-4f) {
+    return;
+  }
+
+  from = normalize(from);
+  to = normalize(to);
+
+  // Rotates the up vector around the light's axis by the angle that takes the parent's up to the scene's up.
+  m_goboUp = to * dot(m_goboUp, from) + cross(axis, to) * dot(m_goboUp, cross(axis, from)) + axis * dot(m_goboUp, axis);
+}
+
+bool RtLight::isGoboRendered() const {
+  if (m_gobo == nullptr || m_goboTextureIndex == BINDING_INDEX_INVALID || m_type != RtLightType::Sphere || !LightManager::enableGobos()) {
+    return false;
+  }
+
+  return m_sphereLight.getShaping().getEnabled();
+}
+
+void RtLight::setGoboTexture(const uint16_t textureIndex, const uint32_t width, const uint32_t height, const VkFormat format) const {
+  m_goboTextureIndex = textureIndex;
+  m_goboTextureWidth = static_cast<uint16_t>(std::min(width, 0xFFFFu));
+  m_goboTextureHeight = static_cast<uint16_t>(std::min(height, 0xFFFFu));
+  m_goboTextureIsGrayscale = isOneChannelFormat(format);
+  m_goboTextureIsSrgb = isSrgbFormat(format);
+}
+
+float RtLight::getGoboAspect() const {
+  return m_gobo != nullptr ? m_gobo->getAspect(m_goboTextureWidth, m_goboTextureHeight) : 1.0f;
+}
+
+double RtLight::getGoboPlayTime() const {
+  if (m_gobo == nullptr) {
+    return 0.0;
+  }
+
+  const GlobalTime& time = GlobalTime::get();
+  const double timeOffset = m_gobo->getTimeOffset(m_stableIdentity);
+
+  // Note: Playing once counts from the light's first frame. The other modes share the clock of material sprite sheets.
+  if (m_gobo->spriteSheetLoopMode != RtLightGoboLoopMode::Once) {
+    return time.animationTimeMs() / 1000.0 + timeOffset;
+  }
+
+  const uint64_t currentTimeUs = time.absoluteTimeUs();
+  const bool hasStarted = m_goboStartTimeUs != kGoboNotStarted && currentTimeUs >= m_goboStartTimeUs;
+
+  return (hasStarted ? (currentTimeUs - m_goboStartTimeUs) * 1e-6 : 0.0) + timeOffset;
+}
+
+bool RtLight::isGoboAnimated() const {
+  return isGoboRendered() && m_gobo->isAnimated(getGoboPlayTime());
+}
+
+bool RtLight::getGoboGPUData(RtLightGoboGPUData& goboData, const bool isWorldLeftHanded) const {
+  if (!isGoboRendered()) {
+    return false;
+  }
+
+  const RtLightShaping& shaping = m_sphereLight.getShaping();
+
+  // Build the projection frame from the shaping axis and the up vector, falling back to another vector when they are parallel.
+
+  const Vector3& axis = shaping.getDirection();
+  Vector3 up = m_goboUp - axis * dot(m_goboUp, axis);
+
+  // Note: Within about half a degree of the up vector, the sign of a tiny tilt would turn the image around.
+  if (lengthSqr(up) < 1e-4f) {
+    const Vector3 fallbackUp = std::abs(axis.y) < 0.99f ? Vector3(0.0f, 1.0f, 0.0f) : Vector3(1.0f, 0.0f, 0.0f);
+    up = fallbackUp - axis * dot(fallbackUp, axis);
+  }
+
+  up = normalize(up);
+
+  // Note: The GPU derives the V axis as cross(axis, tangent), which points opposite to the rotated up vector,
+  // so the top row of the texture is projected towards up.
+  // In a left-handed world, right is on the other side, so the V scale is negated to keep the top row up.
+  const Vector3 right = isWorldLeftHanded ? cross(up, axis) : cross(axis, up);
+
+  const GlobalTime& time = GlobalTime::get();
+  if (m_goboStartTimeUs == kGoboNotStarted) {
+    m_goboStartTimeUs = time.absoluteTimeUs();
+  }
+
+  // Note: The animation is resolved here, so the previous frame's light buffer holds the previous frame's image.
+  // Scrolling and rotation use the unwrapped clock, as the wrap of the animation time would make them jump.
+  const double motionTime = time.absoluteTimeUs() * 1e-6 + m_gobo->getTimeOffset(m_stableIdentity);
+  const float rotation = m_gobo->getRotationRadians(motionTime);
+
+  goboData.tangent = right * std::cos(rotation) + up * std::sin(rotation);
+
+  // Note: The aspect and scale apply in the image's rotated frame, so rotation never shears it.
+  Vector2 uvScale = m_gobo->scale * (0.5f / std::tan(m_gobo->fovRadians * 0.5f));
+  const float aspect = getGoboAspect();
+  if (aspect > 1.0f) {
+    uvScale.y *= aspect;
+  } else if (aspect < 1.0f) {
+    uvScale.x /= aspect;
+  }
+
+  goboData.uvScale = clamp(uvScale, Vector2(-kGoboMaxUvScale), Vector2(kGoboMaxUvScale));
+  if (isWorldLeftHanded) {
+    goboData.uvScale.y = -goboData.uvScale.y;
+  }
+
+  goboData.uvOffset = m_gobo->getOffset(motionTime);
+  goboData.wrapMode = m_gobo->wrapMode;
+  goboData.frames = m_gobo->getFrames(getGoboPlayTime(), m_stableIdentity);
+  goboData.spriteSheetRows = m_gobo->spriteSheetRows;
+  goboData.spriteSheetCols = m_gobo->spriteSheetCols;
+  goboData.strength = m_gobo->strength;
+  goboData.textureIndex = m_goboTextureIndex;
+
+  const bool decodeSrgb = m_gobo->colorSpace == RtLightGoboColorSpace::Srgb && !m_goboTextureIsSrgb;
+  goboData.flags = lightFlagGobo | (static_cast<uint32_t>(m_gobo->wrapMode) << lightGoboWrapShift);
+  goboData.flags |= m_gobo->invert ? lightFlagGoboInvert : 0;
+  goboData.flags |= m_gobo->useAlpha ? lightFlagGoboUseAlpha : 0;
+  goboData.flags |= m_goboTextureIsGrayscale ? lightFlagGoboGrayscale : 0;
+  goboData.flags |= decodeSrgb ? lightFlagGoboDecodeSrgb : 0;
+
+  return true;
+}
+
+void RtLight::writeGPUData(unsigned char* data, std::size_t& offset, const bool isWorldLeftHanded) const {
   switch (m_type) {
   default:
     assert(false);
 
     [[fallthrough]];
   case RtLightType::Sphere:
-    m_sphereLight.writeGPUData(data, offset);
+  {
+    RtLightGoboGPUData goboData;
+    const bool hasGobo = getGoboGPUData(goboData, isWorldLeftHanded);
+    m_sphereLight.writeGPUData(data, offset, hasGobo ? &goboData : nullptr);
     break;
+  }
   case RtLightType::Rect:
     m_rectLight.writeGPUData(data, offset);
     break;
