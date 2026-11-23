@@ -203,6 +203,12 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
   }
   else if ((VisibilityMode & visibilityModeEnableTranslucentMaterials) && polymorphicType == surfaceMaterialTypeTranslucent)
   {
+    // A translucent surface dissolved by the game's fade lets rays through its cut pixels, see AlphaBlendDissolve::TranslucentFade.
+    if (translucentSurfaceIsAlphaBlendDissolveCut(surface, surfaceInteraction))
+    {
+      return vec3(1.0f);
+    }
+
     const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
 
     // Extract the thin walled flag before evaluating the material interaction

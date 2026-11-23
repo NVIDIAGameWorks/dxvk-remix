@@ -43,6 +43,22 @@ f16vec3 translucentSurfaceMaterialInteractionResolveTransmittanceColor(f16vec3 t
   return gammaToLinear(transmittanceColor);
 }
 
+// Returns whether rtx.enableAlphaBlendDissolve cuts this pixel of a translucent surface, see AlphaBlendDissolve::TranslucentFade.
+// Rays pass through cut pixels as through nothing, so this is checked before the translucent material is evaluated.
+bool translucentSurfaceIsAlphaBlendDissolveCut(Surface surface, SurfaceInteraction surfaceInteraction)
+{
+  if (uint(surface.alphaBlendDissolve) != uint(AlphaBlendDissolve::TranslucentFade))
+  {
+    return false;
+  }
+
+  // The game's fade is its texture factor alpha, as for AlphaBlendDissolve::Fade.
+  const float fade = unorm4x8ToFloat4x32(surface.tFactor).a;
+  RNG rng = createAlphaBlendDissolveRNG();
+
+  return isAlphaBlendDissolveFadeCut(fade, surfaceInteraction.position, rng);
+}
+
 // Translucent Surface Material Interaction Functions
 
 TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreate(

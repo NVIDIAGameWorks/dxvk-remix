@@ -73,7 +73,13 @@ enum class AlphaBlendDissolve : uint8_t {
   // Keeps a pixel where its vertex alpha exceeds blue noise.
   VertexAlpha = 3,
   // Keeps a pixel where the game's texture factor alpha exceeds blue noise and the replacement's alpha passes its own alpha test.
-  Fade = 4
+  Fade = 4,
+  // A replacement that authors its own blending. Keeps a pixel where the game's texture factor alpha exceeds blue noise.
+  // Kept pixels blend by the replacement's own alpha and blend state, without the game's fade.
+  BlendedFade = 5,
+  // A translucent replacement. Rays pass through a pixel unless the game's texture factor alpha exceeds blue noise.
+  // Kept pixels keep their translucent shading.
+  TranslucentFade = 6,
 };
 
 static const uint32_t alphaBlendDissolveMask = 0x7u;

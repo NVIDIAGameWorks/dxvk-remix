@@ -536,6 +536,41 @@ void overrideMaterialInteractionForEye(
     opaqueSurfaceMaterial.emissiveIntensity;
 }
 
+// rtx.enableAlphaBlendDissolve Helper Functions
+
+// Creates the random number generator of rtx.enableAlphaBlendDissolve. One blue-noise value per pixel and frame is shared by
+// every layer and pass at this dispatch index, so a surface, and every part of a replacement, fades as a whole.
+RNG createAlphaBlendDissolveRNG()
+{
+  return createRNGAnywhere(cb.frameIdx, 1033);
+}
+
+// Returns the noise that AlphaBlendDissolvePattern::SpatialNoise compares against the game's fade at a world space position.
+float calcAlphaBlendDissolveSpatialRampAlpha(vec3 position, inout RNG rng)
+{
+  // The noise is evaluated at the surface's world position, which every draw of a model shares. Object space does not: a
+  // skinned draw with a single bone has that bone folded into its instance transform while its other draws are skinned into
+  // world space, and a replacement has its own asset space. A model that moves in the world moves through the pattern.
+  const float spatialNoise = simplexNoise3D(position * cb.alphaBlendDissolvePatternSpatialScale) * float(0.5f) + float(0.5f);
+
+  // rtx.alphaBlendDissolvePatternNoiseScale adds scaled blue noise to the spatial noise, so a pixel is cut stochastically over a band
+  // of the noise instead of exactly at the fade. Renormalizing keeps the jittered noise in [0, 1], so the fade still sweeps all of it.
+  const float noiseScale = cb.alphaBlendDissolvePatternNoiseScale;
+  return (spatialNoise + noiseScale * getNextSampleBlueNoise(rng)) / (float(1.0f) + noiseScale);
+}
+
+// Returns whether rtx.alphaBlendDissolvePattern cuts a pixel whose coverage is the game's fade alone, as for
+// AlphaBlendDissolve::BlendedFade and AlphaBlendDissolve::TranslucentFade.
+bool isAlphaBlendDissolveFadeCut(float fade, vec3 position, inout RNG rng)
+{
+  if (cb.alphaBlendDissolvePattern == AlphaBlendDissolvePattern::SpatialNoise)
+  {
+    return !alphaTestPasses(uint(AlphaTestType::kLessOrEqual), calcAlphaBlendDissolveSpatialRampAlpha(position, rng), fade);
+  }
+
+  return !(fade > getNextSampleBlueNoise(rng));
+}
+
 // Opaque Surface Material Interaction Functions
 
 // Note: EnablePom can be set to false by callers that do not need the parallax-displaced texture coordinates, such as visibility rays.
@@ -719,7 +754,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
   vec4 tFactor = unorm4x8ToFloat4x32(surface.tFactor).bgra;
   bool isAlphaBlendDissolveCut = false;
   // The material's own alpha, before texture stage operations, is the coverage that AlphaBlendDissolve::Fade and
-  // AlphaBlendDissolvePattern::SpatialNoise alpha test, unless the material ignores it.
+  // AlphaBlendDissolvePattern::SpatialNoise alpha test, and the alpha that AlphaBlendDissolve::BlendedFade blends by,
+  // unless the material ignores it.
   const float alphaBlendDissolveMaterialAlpha = opacity;
 
   // WAR for REMIX-1573: texture ops for opacity should happen during baking and be skipped here for baked terrain,
@@ -771,22 +807,20 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
       const float fade = alphaBlendDissolve == uint(AlphaBlendDissolve::VertexAlpha) ? surfaceInteraction.vertexColor.a : tFactor.a;
       const bool isTextureAlphaFaded = alphaBlendDissolve == uint(AlphaBlendDissolve::TextureAlphaTimesTextureFactor);
       const bool isFade = alphaBlendDissolve == uint(AlphaBlendDissolve::Fade);
+      const bool isBlendedFade = alphaBlendDissolve == uint(AlphaBlendDissolve::BlendedFade);
       const bool isSpatialNoise = cb.alphaBlendDissolvePattern == AlphaBlendDissolvePattern::SpatialNoise;
 
       // Spatial noise keeps a pixel while its noise is at most the fade; blue noise keeps it while its coverage exceeds blue noise.
-      // One blue-noise value per pixel and frame is shared by every layer and pass at this dispatch index, so a surface fades as a whole.
-      RNG rng = createRNGAnywhere(cb.frameIdx, 1033);
-      if (isSpatialNoise)
+      RNG rng = createAlphaBlendDissolveRNG();
+      if (isBlendedFade)
       {
-          // The noise is evaluated at the surface's world position, which every draw of a model shares. Object space does not: a
-          // skinned draw with a single bone has that bone folded into its instance transform while its other draws are skinned into
-          // world space, and a replacement has its own asset space. A model that moves in the world moves through the pattern.
-          const float spatialNoise = simplexNoise3D(surfaceInteraction.position * cb.alphaBlendDissolvePatternSpatialScale) * float(0.5f) + float(0.5f);
-
-          // rtx.alphaBlendDissolvePatternNoiseScale adds scaled blue noise to the spatial noise, so a pixel is cut stochastically over a band
-          // of the noise instead of exactly at the fade. Renormalizing keeps the jittered noise in [0, 1], so the fade still sweeps all of it.
-          const float noiseScale = cb.alphaBlendDissolvePatternNoiseScale;
-          const float rampAlpha = (spatialNoise + noiseScale * getNextSampleBlueNoise(rng)) / (float(1.0f) + noiseScale);
+          // A replacement that authors its own blending is cut by the game's fade alone. Its own alpha, alpha test and blending
+          // decide the opacity of the pixels it keeps.
+          isAlphaBlendDissolveCut = isAlphaBlendDissolveFadeCut(fade, surfaceInteraction.position, rng);
+      }
+      else if (isSpatialNoise)
+      {
+          const float rampAlpha = calcAlphaBlendDissolveSpatialRampAlpha(surfaceInteraction.position, rng);
 
           // The surface keeps its coverage without the fade, which the noise already carries: the material's alpha for
           // TextureAlphaTimesTextureFactor and Fade, and full coverage for TextureFactor and VertexAlpha, whose alpha is the fade alone.
@@ -816,9 +850,20 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
       // test below to the game's coverage without its fade, which the noise already carries: the material's alpha for
       // TextureAlphaTimesTextureFactor, and full coverage for TextureFactor, whose alpha is the fade alone. Testing the faded alpha
       // would cut an alpha-tested surface whole as soon as the fade passes the test's reference.
-      isOpacityResolved = isSpatialNoise || isFade;
-      opacity = isOpacityResolved ? (isAlphaBlendDissolveCut ? float(0.0f) : float(1.0f))
-                                  : (alphaBlendDissolve == uint(AlphaBlendDissolve::TextureFactor) ? float(1.0f) : opacity);
+      // A fade blended dissolve decides only its cut pixels, which also lose their emissive blend. Its kept pixels blend below by the
+      // replacement's own alpha in place of the texture stage alpha, which carries the game's fade.
+      if (isBlendedFade)
+      {
+        isOpacityResolved = isAlphaBlendDissolveCut;
+        opacity = isAlphaBlendDissolveCut ? float(0.0f) : materialAlpha;
+        emissiveBlendOverrideInfluence = isAlphaBlendDissolveCut ? float(0.0f) : emissiveBlendOverrideInfluence;
+      }
+      else
+      {
+        isOpacityResolved = isSpatialNoise || isFade;
+        opacity = isOpacityResolved ? (isAlphaBlendDissolveCut ? float(0.0f) : float(1.0f))
+                                    : (alphaBlendDissolve == uint(AlphaBlendDissolve::TextureFactor) ? float(1.0f) : opacity);
+      }
     }
 
     if (!isOpacityResolved)
