@@ -1252,10 +1252,9 @@ namespace dxvk {
       return;
     }
 
-    // Matches POST_FX_HIGHLIGHTING_INVALID_VALUE and the default clearColorPicking.
-    constexpr uint32_t kInvalidParticlePickingValue = 0xFFFFFFFFu;
     const VkDeviceSize size = sizeof(uint32_t) * context.desc.maxNumParticles;
     if (m_objectPicking == nullptr || m_objectPicking->info().size != size) {
+      const uint32_t noHitPickingValue = pCtx->getCommonObjects()->getSceneManager().getGlobals().clearColorPicking;
       DxvkBufferCreateInfo info;
       info.size = size;
       info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -1263,14 +1262,14 @@ namespace dxvk {
       info.access = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
       m_objectPicking = pCtx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTX Particles - Object Picking Buffer");
 
-      // Slots the geometry pass has not written yet must never match a highlighted value.
-      pCtx->clearBuffer(m_objectPicking, 0, size, kInvalidParticlePickingValue);
+      // Slots the geometry pass has not written yet read like a ray miss.
+      pCtx->clearBuffer(m_objectPicking, 0, size, noHitPickingValue);
 
       info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
       info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
       info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
       m_objectPickingSnapshot = pCtx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTX Particles - Object Picking Snapshot");
-      pCtx->clearBuffer(m_objectPickingSnapshot, 0, size, kInvalidParticlePickingValue);
+      pCtx->clearBuffer(m_objectPickingSnapshot, 0, size, noHitPickingValue);
 
       m_populateObjectPickingSnapshot = true;
     }
@@ -1306,6 +1305,7 @@ namespace dxvk {
     pCtx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ParticleSystemPopulateObjectPicking::getShader());
     pCtx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT, DxvkBufferSlice(m_particles));
     pCtx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_OBJECT_PICKING_OUTPUT, DxvkBufferSlice(m_objectPickingSnapshot));
+    pCtx->setPushConstantBank(DxvkPushConstantBank::RTX);
     pCtx->pushConstants(0, sizeof(args), &args);
 
     const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { args.particleCount, 1, 1 }, VkExtent3D { 128, 1, 1 });
