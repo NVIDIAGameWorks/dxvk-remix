@@ -97,6 +97,10 @@ public:
 
   void prepareSceneData(Rc<DxvkContext> ctx, CameraManager const& cameraManager);
 
+  // Resolves the bindless indices of gobo textures and their sampler.
+  // Must be called after all lights for the frame are added and before the bindless tables are built.
+  void trackGoboTextures();
+
   void addGameLight(D3DLIGHTTYPE type, const RtLight& light);
   RtLight* addLight(const RtLight& light, const RtLightAntiCullingType antiCullingType);
   RtLight* addLight(const RtLight& light, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType);
@@ -140,6 +144,16 @@ private:
   Rc<DxvkBuffer> m_previousLightBuffer;
   Rc<DxvkBuffer> m_lightMappingBuffer;
   Rc<DxvkBuffer> m_lightIdentityBuffer;
+
+  // The texture cache generations the gobo texture indices in the light buffers were resolved in.
+  uint32_t m_lightBufferTextureGeneration = 0;
+  uint32_t m_previousLightBufferTextureGeneration = 0;
+  // The gobo sampler of each wrap mode, indexed by lightGoboWrapClamp to lightGoboWrapExtend.
+  std::array<uint32_t, 4> m_goboSamplerIndices = { BINDING_INDEX_INVALID, BINDING_INDEX_INVALID, BINDING_INDEX_INVALID, BINDING_INDEX_INVALID };
+  // The world's handedness as the main camera last showed it, see LightUtils::getWorldHandedness.
+  bool m_isWorldLeftHanded = false;
+  // The squared camera distance and buffer index of the nearest animated gobo lights.
+  std::vector<std::pair<float, uint32_t>> m_animatedGoboLights;
 
   uint32_t m_currentActiveLightCount = 0;
   std::array<LightRange, lightTypeCount> m_lightTypeRanges;
@@ -227,6 +241,10 @@ private:
              "If true, scales the RectLight cone half-angle by the light's aspect ratio in tangent space, "
              "producing a cone that matches the rect's proportions. When false (default), the cone is uniform "
              "and independent of the light's width/height. Ignored when enableLegacyRectLightConeShaping is true.");
+  RTX_OPTION("rtx.lights", bool, enableGobos, true,
+             "Enables light gobos, textures that spot lights project onto the scene like a slide projector, for example window frames or foliage shadows. "
+             "Gobos are authored on replacement sphere lights with shaping through the inputs:shaping:gobo attributes. "
+             "Turning this off renders those lights without their gobo texture, which can help to compare the look or performance.");
 };
 
 }  // namespace dxvk

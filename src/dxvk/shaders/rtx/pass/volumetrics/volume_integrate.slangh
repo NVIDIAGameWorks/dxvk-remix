@@ -28,6 +28,25 @@
 #include "rtx/concept/volume/volume.slangh"
 #include "rtx/algorithm/volume_integrator.slangh"
 
+// Returns true when the position is inside the cone of an animated gobo light.
+bool isLitByAnimatedLightGobo(vec3 position)
+{
+  for (uint i = 0; i < cb.lightGoboArgs.animatedLightCount; ++i)
+  {
+    const uint lightIndex = cb.lightGoboArgs.animatedLightIndices[i / 4][i % 4];
+    const SphereLight sphereLight = sphereLightCreate(decodePolymorphicLight(lights[lightIndex]));
+    const vec3 lightToPosition = position - sphereLight.position;
+    const float lightDistance = length(lightToPosition);
+
+    if (lightDistance > 0.0f && lightShapingCalcRadialFalloff(sphereLight.shaping, lightToPosition / lightDistance) > 0.0f)
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void volume_integrate_pass(ivec3 threadIndex)
 { 
   const VolumeArgs volumeArgs = cb.volumeArgs;
@@ -137,4 +156,11 @@ void volume_integrate_pass(ivec3 threadIndex)
     rabRandomState, froxelIndex, froxelVolume, previousFroxelLookup.volumeIndex, previousVolumeExists && !volumeArgs.resetHistory,
     ray, minimalRayInteraction, volumeInteraction,
     previousFroxelLookup.uvw, previousFroxelIndex, clampedPreviousFroxelIndex);
+
+  // Note: Lowering the stored age keeps the next frame's history short, so a moving gobo leaves no long trail.
+  if (volumeArgs.maxAccumulationFrames > 0 && isLitByAnimatedLightGobo(currentFroxelWorldPosition))
+  {
+    const float maxHistoryAge = max(lightGoboVolumeHistoryFrames - lightGoboVolumeHistoryAgeOffset, 0.0f) / float(volumeArgs.maxAccumulationFrames);
+    AccumulatedRadianceAge[uvec3(threadIndex)] = min(AccumulatedRadianceAge[uvec3(threadIndex)], maxHistoryAge);
+  }
 }

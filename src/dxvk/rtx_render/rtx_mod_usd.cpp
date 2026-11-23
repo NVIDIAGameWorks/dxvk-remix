@@ -1142,6 +1142,12 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
 
   std::optional<LightData> lightData = LightData::tryCreate(lightPrim, isTransformDefined ? &lightTransform : nullptr, isRoot, isParentTransformDefined);
   if (lightData.has_value()) {
+    // Note: Gobo textures resolve and load like material textures, and are fully loaded like the dome light texture.
+    const pxr::TfToken& goboFileToken = LightData::getGoboFileToken();
+    if (lightPrim.HasAttribute(goboFileToken)) {
+      lightData->setGoboTexture(TextureRef(getTexture(args, lightPrim, goboFileToken, true)));
+    }
+
     if (isRoot && args.meshes.size() == 1) {
       // Already created an empty replacement to indicate the root needs to be kept,
       // but since we have actual override data for it, need to remove that placeholder.

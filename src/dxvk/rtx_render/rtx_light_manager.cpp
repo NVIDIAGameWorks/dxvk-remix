@@ -36,7 +36,10 @@
 #include "math.h"
 #include "rtx_lights.h"
 #include "rtx_intersection_test.h"
+#include "rtx_light_utils.h"
+#include "rtx_resources.h"
 #include "rtx_sparse_rendering.h"
+#include "rtx_texture_manager.h"
 
 /*  Light Manager (blurb)
 * 
@@ -345,6 +348,8 @@ namespace dxvk {
     m_currentActiveLightCount = 0;
 
     std::swap(m_lightBuffer, m_previousLightBuffer);
+    m_previousLightBufferTextureGeneration = m_lightBufferTextureGeneration;
+    m_lightBufferTextureGeneration = device()->getCommon()->getTextureManager().getTextureCacheGeneration();
 
     // Linearize the light list
     // Note: This is done rather than just iterating over the light list twice mostly so that the fallback light
@@ -438,6 +443,18 @@ namespace dxvk {
       m_lightIdentityData.clear();
     }
 
+    m_animatedGoboLights.clear();
+    const RtCamera& mainCamera = cameraManager.getMainCamera();
+    const Vector3 cameraPosition = mainCamera.getPosition();
+
+    // Note: The handedness is kept while the main camera is missing, as in menus and loading screens.
+    if (cameraManager.isCameraValid(CameraType::Main)) {
+      const int handedness = LightUtils::getWorldHandedness(mainCamera.getWorldToView(false), mainCamera.getViewToProjection());
+      if (handedness != 0) {
+        m_isWorldLeftHanded = handedness > 0;
+      }
+    }
+
     // Write the light data into the previously allocated ranges
     for (auto&& linearizedLight : m_linearizedLights) {
       RtLight& light = *linearizedLight;
@@ -470,7 +487,12 @@ namespace dxvk {
         // Prepare data for GPU
         size_t dataOffset = newBufferIdx * kLightGPUSize;
         assert(dataOffset < lightsGPUSize);
-        light.writeGPUData(m_lightsGPUData.data(), dataOffset);
+        light.writeGPUData(m_lightsGPUData.data(), dataOffset, m_isWorldLeftHanded);
+
+        // Note: Volumetric lighting keeps a short history in the cones of these lights, see documentation/LightGobos.md.
+        if (light.getGobo() != nullptr && light.getVolumetricRadianceScale() > 0.0f && light.isGoboAnimated()) {
+          m_animatedGoboLights.emplace_back(lengthSqr(light.getPosition() - cameraPosition), newBufferIdx);
+        }
 
         // Update the position in buffer for next frame
         light.setBufferIdx(newBufferIdx);
@@ -481,6 +503,12 @@ namespace dxvk {
         // This light is either disabled or didn't fit into the buffer, so set its buffer index to invalid.
         light.setBufferIdx(kNewLightIdx);
       }
+    }
+
+    if (m_animatedGoboLights.size() > lightGoboAnimatedLightCapacity) {
+      const auto nearestEnd = m_animatedGoboLights.begin() + lightGoboAnimatedLightCapacity;
+      std::nth_element(m_animatedGoboLights.begin(), nearestEnd, m_animatedGoboLights.end());
+      m_animatedGoboLights.resize(lightGoboAnimatedLightCapacity);
     }
 
     // Build the sorted section (B) of the identity table from section (A) so the GPU can map a
@@ -601,6 +629,16 @@ namespace dxvk {
           if (coneSoftnessDelta > 0.01f) {
             return kNotSimilar;
           }
+        }
+
+        const RtLightGobo* pGoboA = a.getGobo();
+        const RtLightGobo* pGoboB = b.getGobo();
+        if ((pGoboA == nullptr) != (pGoboB == nullptr)) {
+          return kNotSimilar;
+        }
+
+        if (pGoboA != nullptr && pGoboA->texture.getUniqueKey() != pGoboB->texture.getUniqueKey()) {
+          return kNotSimilar;
         }
       }
 
@@ -843,6 +881,69 @@ namespace dxvk {
     return m_gpuDomeLightArgs;
   }
 
+  void LightManager::trackGoboTextures() {
+    if (!enableGobos()) {
+      return;
+    }
+
+    SceneManager& sceneManager = device()->getCommon()->getSceneManager();
+
+    // Note: Every gobo index is resolved again each frame, so no light keeps an index from an earlier texture table.
+    // A light that is updated after this call has no index and renders without its gobo for that frame.
+    const auto trackGoboTexture = [&sceneManager](const RtLight& light) {
+      const RtLightGobo* pGobo = light.getGobo();
+      if (pGobo == nullptr) {
+        return;
+      }
+
+      // Note: Tracked synchronously like the dome light texture so all of its mips stay resident.
+      uint32_t textureIndex = BINDING_INDEX_INVALID;
+      sceneManager.trackTexture(pGobo->texture, textureIndex, true, false);
+
+      // Note: A texture without an image would sample the black dummy texture and turn the light off, so the light
+      // renders without its gobo until the texture is resident, and for good if the texture failed to load.
+      const DxvkImageView* pImageView = pGobo->texture.getImageView();
+      if (textureIndex >= BINDING_INDEX_INVALID || pImageView == nullptr) {
+        const Rc<ManagedTexture>& managedTexture = pGobo->texture.getManagedTexture();
+        if (managedTexture != nullptr && managedTexture->m_state.load() == ManagedTexture::State::kFailed) {
+          ONCE(Logger::warn("A light gobo texture failed to load. Lights using it are rendered without their gobo."));
+        }
+
+        light.setGoboTexture(BINDING_INDEX_INVALID, 1, 1, VK_FORMAT_UNDEFINED);
+        return;
+      }
+
+      // Note: The automatic aspect uses the asset's size, as smaller mips round the sides of the image.
+      const Rc<ManagedTexture>& managedTexture = pGobo->texture.getManagedTexture();
+      const bool hasAssetData = managedTexture != nullptr && managedTexture->m_assetData != nullptr;
+      const VkExtent3D extent = hasAssetData ? managedTexture->m_assetData->info().extent : pImageView->mipLevelExtent(0);
+      light.setGoboTexture(static_cast<uint16_t>(textureIndex), extent.width, extent.height, pImageView->info().format);
+    };
+
+    for (auto&& pair : m_lights) {
+      trackGoboTexture(pair.second);
+    }
+
+    for (auto&& pair : m_externallyTrackedLights) {
+      trackGoboTexture(pair.second);
+    }
+
+    for (auto&& pair : m_externalLights) {
+      trackGoboTexture(pair.second);
+    }
+
+    // Note: An image without flipbook cells wraps or clamps in its sampler, so anisotropic taps past its edge follow its wrap mode.
+    Resources& resources = device()->getCommon()->getResources();
+    const auto trackGoboSampler = [&](const VkSamplerAddressMode addressMode) {
+      return sceneManager.trackSampler(resources.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, addressMode, 0.0f, true));
+    };
+
+    m_goboSamplerIndices[lightGoboWrapClamp] = trackGoboSampler(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    m_goboSamplerIndices[lightGoboWrapRepeat] = trackGoboSampler(VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    m_goboSamplerIndices[lightGoboWrapMirror] = trackGoboSampler(VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT);
+    m_goboSamplerIndices[lightGoboWrapExtend] = m_goboSamplerIndices[lightGoboWrapClamp];
+  }
+
   void LightManager::addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight) {
     auto found = m_externalDomeLights.find(handle);
     if (found != m_externalDomeLights.end()) {
@@ -871,6 +972,22 @@ namespace dxvk {
     // The distribution code makes sure that there is at least one sample for each non-empty type, and the rest is
     // approximate, i.e. the sample counts set by the user are just guidelines and the actual total count can be
     // slightly different.
+
+    raytraceArgs.lightGoboArgs.samplerIndices.x = m_goboSamplerIndices[lightGoboWrapClamp];
+    raytraceArgs.lightGoboArgs.samplerIndices.y = m_goboSamplerIndices[lightGoboWrapRepeat];
+    raytraceArgs.lightGoboArgs.samplerIndices.z = m_goboSamplerIndices[lightGoboWrapMirror];
+    raytraceArgs.lightGoboArgs.samplerIndices.w = m_goboSamplerIndices[lightGoboWrapExtend];
+    raytraceArgs.lightGoboArgs.enablePreviousLightGobos =
+      enableGobos() && m_previousLightBufferTextureGeneration == m_lightBufferTextureGeneration;
+
+    uint32_t animatedLightIndices[lightGoboAnimatedLightCapacity] = {};
+    for (size_t i = 0; i < m_animatedGoboLights.size(); ++i) {
+      animatedLightIndices[i] = m_animatedGoboLights[i].second;
+    }
+
+    static_assert(sizeof(animatedLightIndices) == sizeof(raytraceArgs.lightGoboArgs.animatedLightIndices));
+    std::memcpy(raytraceArgs.lightGoboArgs.animatedLightIndices, animatedLightIndices, sizeof(animatedLightIndices));
+    raytraceArgs.lightGoboArgs.animatedLightCount = static_cast<uint32_t>(m_animatedGoboLights.size());
 
     raytraceArgs.rtxdiTotalSampleCount = 0;
     raytraceArgs.volumeRISTotalSampleCount = 0;

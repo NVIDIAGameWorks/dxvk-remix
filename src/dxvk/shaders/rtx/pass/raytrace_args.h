@@ -104,6 +104,18 @@ struct DomeLightArgs {
   uint textureIndex;
 };
 
+struct LightGoboArgs {
+  // The sampler of each wrap mode, indexed by lightGoboWrapClamp to lightGoboWrapExtend.
+  uvec4 samplerIndices;
+  // False when the previous frame's lights may hold gobo texture indices from before a texture cache reset.
+  uint enablePreviousLightGobos;
+  uint animatedLightCount;
+  uint pad0;
+  uint pad1;
+  // The light buffer indices of the animated gobo lights that shorten the volumetric history.
+  uvec4 animatedLightIndices[lightGoboAnimatedLightCapacity / 4];
+};
+
 struct SssArgs {
   uint enableThinOpaque;
   uint enableDiffusionProfile;
@@ -187,6 +199,8 @@ struct RaytraceArgs {
   Camera renderTargetCamera;
 
   SparseRenderingArgs sparseRenderingArgs;
+
+  LightGoboArgs lightGoboArgs;
 
   // ------------------------- Structs above this line, non structs below this line -----------------------------------
 

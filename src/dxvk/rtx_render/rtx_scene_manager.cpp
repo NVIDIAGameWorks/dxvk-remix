@@ -2372,6 +2372,11 @@ namespace dxvk {
           // Transform the replacement light by the legacy light
           if (replacementLight.relativeTransform()) {
             rtReplacementLight.applyTransform(lightTransform);
+
+            // Note: The transform of a spot or directional light only has a direction, see RtLight::levelGoboUp.
+            if (light.Type != D3DLIGHT_POINT) {
+              rtReplacementLight.levelGoboUp(lightTransform, getSceneUp());
+            }
           }
 
           RtLight* existingLight = (replacementInstance->prims.size() > i)
@@ -2438,6 +2443,7 @@ namespace dxvk {
       }
       {
         ScopedCpuProfileZoneN("GPU Resident Scene Bindless Resources");
+        m_lightManager.trackGoboTextures();
         auto& textureManager = m_device->getCommon()->getTextureManager();
         if (m_bindlessResourceManager.prepareSceneData(
               ctx, textureManager.getTextureTable(), getBufferTable(),
@@ -2492,6 +2498,8 @@ namespace dxvk {
 
     m_terrainBaker->prepareSceneData(ctx);
     m_device->getCommon()->metaWaterSim().prepareSceneData(ctx.ptr());
+
+    m_lightManager.trackGoboTextures();
 
     auto& textureManager = m_device->getCommon()->getTextureManager();
     if (m_bindlessResourceManager.prepareSceneData(

@@ -143,6 +143,16 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
+    if (RemixGui::CollapsingHeader("Light Gobos")) {
+      ImGui::Dummy({ 0,2 });
+      ImGui::Indent();
+
+      // Note: Lights are written to the GPU every frame, so toggling gobos needs no light rebuild.
+      RemixGui::Checkbox("Enable Light Gobos", &enableGobosObject());
+
+      ImGui::Unindent();
+    }
+
     if (RemixGui::CollapsingHeader("Fallback Light")) {
       ImGui::Dummy({ 0,2 });
       ImGui::Indent();
@@ -300,6 +310,38 @@ namespace dxvk {
         }
       } else {
         ImGui::Text("Light Shaping: Not Supported");
+      }
+
+      const RtLightGobo* pGobo = light.getGobo();
+      if (pGobo != nullptr) {
+        const Rc<ManagedTexture>& managedTexture = pGobo->texture.getManagedTexture();
+        const bool hasFilename = managedTexture != nullptr && managedTexture->m_assetData != nullptr && managedTexture->m_assetData->info().filename != nullptr;
+        ImGui::Text("Light Gobo: %s", light.isGoboRendered() ? "Rendered" : "Not Rendered");
+        ImGui::Text("\tTexture: %s", hasFilename ? managedTexture->m_assetData->info().filename : "Unknown");
+        constexpr static const char* kWrapModes[] = { "Clamp", "Repeat", "Mirror", "Extend" };
+        constexpr static const char* kLoopModes[] = { "Loop", "Once", "Ping Pong", "Random" };
+        const uint32_t seed = light.getStableIdentity();
+        const char* scrollNote = pGobo->isWrapping() ? "" : " (Needs Repeat or Mirror)";
+
+        ImGui::Text("\tField of View: %.2f deg", pGobo->fovRadians * kRadiansToDegrees);
+        ImGui::Text("\tAspect: %.2f%s", light.getGoboAspect(), pGobo->aspect > 0.0f ? "" : " (Automatic)");
+        ImGui::Text("\tScale: %.2f %.2f", pGobo->scale.x, pGobo->scale.y);
+        ImGui::Text("\tOffset: %.2f %.2f", pGobo->offset.x, pGobo->offset.y);
+        ImGui::Text("\tRotation: %.2f deg", pGobo->rotationRadians * kRadiansToDegrees);
+        ImGui::Text("\tWrap Mode: %s", kWrapModes[static_cast<uint32_t>(pGobo->wrapMode)]);
+        ImGui::Text("\tStrength: %.2f", pGobo->strength);
+        ImGui::Text("\tInvert: %s", pGobo->invert ? "Yes" : "No");
+        ImGui::Text("\tUse Alpha: %s", pGobo->useAlpha ? "Yes" : "No");
+        ImGui::Text("\tColor Space: %s", pGobo->colorSpace == RtLightGoboColorSpace::Srgb ? "sRGB" : "Automatic");
+        ImGui::Text("\tScroll Speed: %.3f %.3f per second%s", pGobo->scrollSpeed.x, pGobo->scrollSpeed.y, scrollNote);
+        ImGui::Text("\tRotation Speed: %.2f deg/s", pGobo->rotationSpeedRadians * kRadiansToDegrees);
+        ImGui::Text("\tShake: %.2f deg at %.2f Hz", pGobo->shakeAngleRadians * kRadiansToDegrees, pGobo->shakeFrequency);
+        ImGui::Text("\tTime Offset: %.2f s", pGobo->getTimeOffset(seed));
+        ImGui::Text("\tRandom Time Offset: up to %.2f s", pGobo->timeOffsetRandom);
+        ImGui::Text("\tSprite Sheet: %u rows, %u cols", pGobo->spriteSheetRows, pGobo->spriteSheetCols);
+        ImGui::Text("\tFrames: first %u, count %u", pGobo->spriteSheetFirstFrame, pGobo->spriteSheetFrameCount);
+        ImGui::Text("\tPlayback: %.2f fps, %s%s", pGobo->spriteSheetFps, kLoopModes[static_cast<uint32_t>(pGobo->spriteSheetLoopMode)], pGobo->spriteSheetBlend ? ", Blended" : "");
+        ImGui::Text("\tCurrent Cell: %u", pGobo->getFrames(light.getGoboPlayTime(), seed).cell);
       }
 
       ImGui::Text("Volumetric Radiance Scale: %.2f", light.getVolumetricRadianceScale());

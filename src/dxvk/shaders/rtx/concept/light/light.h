@@ -36,6 +36,33 @@ struct LightShaping
   float focusExponent;
 };
 
+// A texture projected from the light's center along the shaping axis, see documentation/LightGobos.md.
+struct LightGobo
+{
+  bool enabled;
+
+  // Note: The texture's U axis in world space. The V axis is cross(primaryAxis, tangent).
+  vec3 tangent;
+  // Note: Maps the projected slope to the UV space of one flipbook cell, with the field of view, aspect and scale applied.
+  vec2 uvScale;
+  vec2 uvOffset;
+  float strength;
+  float frameBlend;
+  uvec2 spriteSheetSize;
+  uint cell;
+  uint nextCell;
+  uint flags;
+  uint16_t textureIndex;
+};
+
+// The point that receives a gobo's light, which sets how widely the gobo is filtered.
+struct LightGoboReceiver
+{
+  // Note: The normal is zero for volumes and for surfaces without a normal.
+  vec3 normal;
+  bool isVolume;
+};
+
 struct MemoryPolymorphicLight
 {
   // Note: Currently aligned nicely to 64 bytes, avoid changing the size of this structure. Note however since this is smaller
@@ -67,6 +94,7 @@ struct SphereLight
   float radius; // Note: Assumed to be >0 always to avoid point light case
   vec3 radiance;
   LightShaping shaping;
+  LightGobo gobo;
 };
 
 struct RectLight

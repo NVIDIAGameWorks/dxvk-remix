@@ -200,6 +200,25 @@ Vector3 LightUtils::calculateRadiance(const D3DLIGHT9& light, const float radius
 }
 
 
+int LightUtils::getWorldHandedness(const Matrix4d& worldToView, const Matrix4d& viewToProjection) {
+  // Note: Clip space X, Y and W point right, up and away from the viewer, which is a left-handed frame.
+  const Matrix4d worldToProjection = viewToProjection * worldToView;
+  const Vector3d right(worldToProjection[0].x, worldToProjection[1].x, worldToProjection[2].x);
+  const Vector3d up(worldToProjection[0].y, worldToProjection[1].y, worldToProjection[2].y);
+  const Vector3d forward(worldToProjection[0].w, worldToProjection[1].w, worldToProjection[2].w);
+  const double orientation = dot(cross(right, up), forward);
+
+  if (orientation > 0.0) {
+    return 1;
+  }
+
+  if (orientation < 0.0) {
+    return -1;
+  }
+
+  return 0;
+}
+
 Matrix4 LightUtils::getLightTransform(const D3DLIGHT9& light) {
 
   // Determine the optimal light transform from light

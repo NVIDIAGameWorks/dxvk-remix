@@ -162,3 +162,306 @@ float lightShapingCalcPlanarFalloff(
 
   return xFalloff * yFalloff;
 }
+
+// Light Gobo Functions
+
+// Note: Footprints are limited to this many texels, so receivers at grazing angles stay finite.
+static const float lightGoboMaxFootprint = 1e6f;
+
+uint lightGoboGetWrapMode(LightGobo lightGobo)
+{
+  return (lightGobo.flags >> lightGoboWrapShift) & lightGoboWrapMask;
+}
+
+LightGobo lightGoboCreate(bool enabled, uint16_t textureIndex, uvec4 data2, uvec4 data3)
+{
+  // Decode the Light Gobo from the packed memory representation
+
+  LightGobo lightGobo = {};
+
+  // Note: An invalid texture index means no gobo, so a stale index never reaches the texture array.
+  if (enabled && textureIndex != BINDING_INDEX_INVALID)
+  {
+    const u16vec2 data20 = unpack16(data2.x);
+    const u16vec2 data21 = unpack16(data2.y);
+    const u16vec2 data22 = unpack16(data2.z);
+    const u16vec2 data23 = unpack16(data2.w);
+    const u16vec2 data31 = unpack16(data3.y);
+
+    lightGobo.enabled = true;
+    lightGobo.textureIndex = textureIndex;
+    lightGobo.flags = data3.w;
+    lightGobo.tangent = normalize(vec3(lightGoboDecodeSnorm16(uint(data20.x)), lightGoboDecodeSnorm16(uint(data20.y)), lightGoboDecodeSnorm16(uint(data21.x))));
+    lightGobo.uvScale = vec2(uint16BitsToF32(data22.x), uint16BitsToF32(data22.y));
+
+    const uint wrapMode = lightGoboGetWrapMode(lightGobo);
+
+    if (wrapMode == lightGoboWrapRepeat || wrapMode == lightGoboWrapMirror)
+    {
+      const float period = wrapMode == lightGoboWrapMirror ? 2.0f : 1.0f;
+      lightGobo.uvOffset = vec2(uint(data23.x), uint(data23.y)) * (period / 65536.0f);
+    }
+    else
+    {
+      lightGobo.uvOffset = vec2(uint16BitsToF32(data23.x), uint16BitsToF32(data23.y));
+    }
+
+    lightGobo.spriteSheetSize = uvec2(data3.x & 0xFFu, (data3.x >> 8) & 0xFFu);
+    lightGobo.frameBlend = float((data3.x >> 16) & 0xFFu) / 256.0f;
+    lightGobo.strength = float(data3.x >> 24) / 255.0f;
+    lightGobo.cell = uint(data31.x);
+    lightGobo.nextCell = uint(data31.y);
+  }
+  else
+  {
+    lightGobo.enabled = false;
+  }
+
+  return lightGobo;
+}
+
+// The footprint of a gobo at one receiver, in texels of the top mip.
+struct LightGoboFilter
+{
+  vec2 gradientX;
+  vec2 gradientY;
+  // Note: The widths over which the edge of a clamped image fades, in UV units of one flipbook cell.
+  vec2 edgeWidth;
+};
+
+// Returns how far a movement of the receiver moves the projection, in texels.
+vec2 lightGoboProjectMovement(
+  LightGobo lightGobo, vec2 cellSize, vec3 primaryAxis, vec3 bitangent, vec2 slope, float axialDistance, vec3 movement)
+{
+  const vec2 slopeChange =
+    (vec2(dot(movement, lightGobo.tangent), dot(movement, bitangent)) - slope * dot(movement, primaryAxis)) / axialDistance;
+
+  return clamp(slopeChange * lightGobo.uvScale * cellSize, vec2(-lightGoboMaxFootprint), vec2(lightGoboMaxFootprint));
+}
+
+// Note: Ray tracing passes have no derivatives, so the footprint is built from the emitter's projection, which softens
+// the pattern like a real projector, and from the pixel or froxel.
+LightGoboFilter lightGoboCalcFilter(
+  LightGobo lightGobo, vec2 cellSize, vec3 primaryAxis, vec3 bitangent,
+  vec2 slope, float axialDistance, float emitterRadius, vec3 position, LightGoboReceiver receiver)
+{
+  const vec2 texelsPerSlope = abs(lightGobo.uvScale) * cellSize;
+  const vec3 cameraToPosition = position - cameraGetWorldPosition(cb.camera);
+  const float cameraDistance = length(cameraToPosition);
+  const bool isSpriteSheet = lightGobo.spriteSheetSize.x > 1 || lightGobo.spriteSheetSize.y > 1;
+
+  float minimumWidth = 2.0f * emitterRadius / axialDistance * max(texelsPerSlope.x, texelsPerSlope.y);
+
+  vec2 footprintX;
+  vec2 footprintY;
+
+  if (receiver.isVolume)
+  {
+    const float froxelSpread = cb.screenSpacePixelSpreadHalfAngle * float(cb.camera.resolution.y) * cb.volumeArgs.inverseFroxelGridDimensions.y;
+    const vec2 froxelWidth = min(2.0f * cameraDistance * froxelSpread / axialDistance * texelsPerSlope, vec2(lightGoboMaxFootprint));
+
+    footprintX = vec2(froxelWidth.x, 0.0f);
+    footprintY = vec2(0.0f, froxelWidth.y);
+    minimumWidth *= exp2(lightGoboVolumeLodBias);
+  }
+  else
+  {
+    // Note: The mip bias sharpens the gobo for temporal upscalers, like material textures.
+    const float pixelWidth = 2.0f * cameraDistance * cb.screenSpacePixelSpreadHalfAngle * exp2(cb.totalMipBias);
+    // Note: A camera at the receiver has no view direction and a footprint of zero, so the light's axis stands in.
+    const vec3 viewDirection = cameraDistance > 1e-6f ? cameraToPosition / cameraDistance : primaryAxis;
+    const vec3 normal = dot(receiver.normal, receiver.normal) > 0.5f ? normalize(receiver.normal) : -viewDirection;
+    const float viewCosine = dot(normal, viewDirection);
+
+    // Note: A pixel covers an ellipse on the surface, which stretches along the view at grazing angles.
+    vec3 stretchedAxis = viewDirection - normal * viewCosine;
+    if (dot(stretchedAxis, stretchedAxis) < 1e-6f)
+    {
+      stretchedAxis = cross(normal, abs(normal.y) < 0.9f ? vec3(0.0f, 1.0f, 0.0f) : vec3(1.0f, 0.0f, 0.0f));
+    }
+    stretchedAxis = normalize(stretchedAxis);
+
+    footprintX = lightGoboProjectMovement(lightGobo, cellSize, primaryAxis, bitangent, slope, axialDistance,
+      stretchedAxis * (pixelWidth / max(abs(viewCosine), 1e-3f)));
+    footprintY = lightGoboProjectMovement(lightGobo, cellSize, primaryAxis, bitangent, slope, axialDistance,
+      cross(normal, stretchedAxis) * pixelWidth);
+  }
+
+  // Note: The emitter softens the edge of a clamped image like its content, up to the size of the image.
+  LightGoboFilter goboFilter;
+  goboFilter.edgeWidth = max(sqrt(footprintX * footprintX + footprintY * footprintY) / cellSize, min(minimumWidth / cellSize, vec2(1.0f)));
+
+  const float lengthX = length(footprintX);
+  const float lengthY = length(footprintY);
+  minimumWidth = clamp(minimumWidth, 1.0f, lightGoboMaxFootprint);
+
+  if (receiver.isVolume || isSpriteSheet)
+  {
+    float width = max(max(lengthX, lengthY), minimumWidth);
+
+    // Note: A flipbook stops at the mip where a cell is two texels wide, as a coarser mip or an anisotropic filter
+    // would read from the neighboring cells.
+    if (isSpriteSheet)
+    {
+      width = min(width, exp2(floor(log2(max(0.5f * min(cellSize.x, cellSize.y), 1.0f)))));
+    }
+
+    goboFilter.gradientX = vec2(width, 0.0f);
+    goboFilter.gradientY = vec2(0.0f, width);
+  }
+  else
+  {
+    goboFilter.gradientX = lengthX > minimumWidth ? footprintX : vec2(minimumWidth, 0.0f);
+    goboFilter.gradientY = lengthY > minimumWidth ? footprintY : vec2(0.0f, minimumWidth);
+  }
+
+  return goboFilter;
+}
+
+// Returns one flipbook cell's color with a single filtered fetch.
+// Note: An image without cells wraps or clamps in the sampler of its wrap mode. A lookup in a flipbook cell is clamped
+// to the centers of the texels wholly inside the cell at the coarser of the two mips that are blended,
+// or at the smallest mip when the footprint is coarser than that.
+vec4 lightGoboSampleCell(LightGobo lightGobo, vec2 textureSize, float maxMip, uint cell, vec2 uv, LightGoboFilter goboFilter)
+{
+  const uint wrapMode = lightGoboGetWrapMode(lightGobo);
+  const uvec2 sheetSize = lightGobo.spriteSheetSize;
+  const bool isSpriteSheet = sheetSize.x > 1 || sheetSize.y > 1;
+
+  const vec2 cellOrigin = vec2(cell % sheetSize.x, cell / sheetSize.x);
+  vec2 cellUv = uv;
+
+  if (isSpriteSheet)
+  {
+    if (wrapMode == lightGoboWrapRepeat)
+    {
+      cellUv = frac(uv);
+    }
+    else if (wrapMode == lightGoboWrapMirror)
+    {
+      cellUv = 1.0f - abs(frac(uv * 0.5f) * 2.0f - 1.0f);
+    }
+
+    const float width = max(min(length(goboFilter.gradientX), length(goboFilter.gradientY)), 1.0f);
+    const vec2 sheet = vec2(sheetSize);
+    const vec2 mipSize = max(floor(textureSize / exp2(min(ceil(log2(width)), maxMip))), vec2(1.0f));
+    const vec2 firstTexel = (ceil(cellOrigin * mipSize / sheet) + 0.5f) * sheet / mipSize - cellOrigin;
+    const vec2 lastTexel = (floor((cellOrigin + 1.0f) * mipSize / sheet) - 0.5f) * sheet / mipSize - cellOrigin;
+    cellUv = min(max(cellUv, firstTexel), max(lastTexel, firstTexel));
+  }
+
+  const vec2 sheetUv = (cellOrigin + cellUv) / vec2(sheetSize);
+  const uint samplerIndex = cb.lightGoboArgs.samplerIndices[isSpriteSheet ? lightGoboWrapClamp : wrapMode];
+
+  return textures[nonuniformEXT(uint(lightGobo.textureIndex))].SampleGrad(
+    samplers[nonuniformEXT(samplerIndex)], sheetUv, goboFilter.gradientX / textureSize, goboFilter.gradientY / textureSize);
+}
+
+float lightGoboSrgbToLinear(float encoded)
+{
+  return encoded <= 0.04045f ? encoded / 12.92f : pow((encoded + 0.055f) / 1.055f, 2.4f);
+}
+
+// Returns a sampled color in linear space.
+vec3 lightGoboDecodeColor(LightGobo lightGobo, vec4 color)
+{
+  vec3 linearColor = (lightGobo.flags & lightFlagGoboGrayscale) != 0u ? color.rrr : color.rgb;
+  // Note: Signed and float formats can hold negative values, and HDR values above one are kept.
+  linearColor = clamp(linearColor, vec3(0.0f), vec3(float16Max));
+
+  if ((lightGobo.flags & lightFlagGoboDecodeSrgb) != 0u)
+  {
+    linearColor = vec3(lightGoboSrgbToLinear(linearColor.r), lightGoboSrgbToLinear(linearColor.g), lightGoboSrgbToLinear(linearColor.b));
+  }
+
+  if ((lightGobo.flags & lightFlagGoboUseAlpha) != 0u)
+  {
+    linearColor *= saturate(color.a);
+  }
+
+  return linearColor;
+}
+
+// Returns the part of a filter that lies inside a clamped image along one axis.
+float lightGoboCalcEdgeCoverage(float coordinate, float width)
+{
+  if (width < 1e-6f)
+  {
+    return coordinate >= 0.0f && coordinate <= 1.0f ? 1.0f : 0.0f;
+  }
+
+  return saturate((min(coordinate + 0.5f * width, 1.0f) - max(coordinate - 0.5f * width, 0.0f)) / width);
+}
+
+// Returns the gobo's color at full strength.
+vec3 lightGoboCalcPattern(
+  LightGobo lightGobo, vec3 primaryAxis, vec3 lightToPosition, float emitterRadius, vec3 position, LightGoboReceiver receiver)
+{
+  const float axialDistance = dot(lightToPosition, primaryAxis);
+
+  // Note: The margin also keeps the projection finite in the plane of the light.
+  if (axialDistance <= 1e-6f * length(lightToPosition))
+  {
+    return vec3(0.0f);
+  }
+
+  const vec3 bitangent = cross(primaryAxis, lightGobo.tangent);
+  const vec2 slope = vec2(dot(lightToPosition, lightGobo.tangent), dot(lightToPosition, bitangent)) / axialDistance;
+  const vec2 uv = 0.5f + slope * lightGobo.uvScale + lightGobo.uvOffset;
+
+  uint width, height, mipCount = 0;
+  textures[nonuniformEXT(uint(lightGobo.textureIndex))].GetDimensions(0, width, height, mipCount);
+
+  const vec2 textureSize = vec2(width, height);
+  const vec2 cellSize = textureSize / vec2(lightGobo.spriteSheetSize);
+  const float maxMip = float(max(mipCount, 1u) - 1u);
+  const LightGoboFilter goboFilter = lightGoboCalcFilter(
+    lightGobo, cellSize, primaryAxis, bitangent, slope, axialDistance, emitterRadius, position, receiver);
+
+  float coverage = 1.0f;
+
+  if (lightGoboGetWrapMode(lightGobo) == lightGoboWrapClamp)
+  {
+    coverage =
+      lightGoboCalcEdgeCoverage(uv.x, goboFilter.edgeWidth.x) * lightGoboCalcEdgeCoverage(uv.y, goboFilter.edgeWidth.y);
+
+    if (coverage <= 0.0f)
+    {
+      return vec3(0.0f);
+    }
+  }
+
+  vec4 texel = lightGoboSampleCell(lightGobo, textureSize, maxMip, lightGobo.cell, uv, goboFilter);
+
+  if (lightGobo.frameBlend > 0.0f)
+  {
+    texel = lerp(texel, lightGoboSampleCell(lightGobo, textureSize, maxMip, lightGobo.nextCell, uv, goboFilter), lightGobo.frameBlend);
+  }
+
+  vec3 color = lightGoboDecodeColor(lightGobo, texel);
+
+  // Note: Inverting applies to the image, so the area around a clamped image stays black.
+  if ((lightGobo.flags & lightFlagGoboInvert) != 0u)
+  {
+    color = max(1.0f - color, vec3(0.0f));
+  }
+
+  return color * coverage;
+}
+
+// Returns the color that scales the light's radiance at a position.
+// Note: The projection starts at the light's center rather than the sampled point on the emitter, so the result
+// is the same for every sample of the light and adds no noise.
+vec3 lightGoboCalcAttenuation(
+  LightGobo lightGobo, vec3 primaryAxis, vec3 lightPosition, float emitterRadius, vec3 position, LightGoboReceiver receiver)
+{
+  if (lightGobo.strength <= 0.0f)
+  {
+    return vec3(1.0f);
+  }
+
+  const vec3 pattern = lightGoboCalcPattern(lightGobo, primaryAxis, position - lightPosition, emitterRadius, position, receiver);
+
+  // Note: The strength also applies behind the light and around the image.
+  return lerp(vec3(1.0f), pattern, lightGobo.strength);
+}

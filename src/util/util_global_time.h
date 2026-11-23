@@ -53,6 +53,9 @@ namespace dxvk {
     // whole milliseconds since startup
     uint64_t absoluteTimeMs() const;
 
+    // Milliseconds of animation time, wrapped at 2^24 ms.
+    uint32_t animationTimeMs() const;
+
     // Seconds of animation time for shaders, wrapped at 2^24 ms.
     // The wrap keeps the value within float precision, and keeps it within 32 bits after the GPU multiplies it by an 8-bit frame rate.
     float animationTimeSeconds() const;

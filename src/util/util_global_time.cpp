@@ -98,8 +98,12 @@ namespace dxvk {
     return m_currentUs / 1000;
   }
 
+  uint32_t GlobalTime::animationTimeMs() const {
+    return static_cast<uint32_t>(absoluteTimeMs()) & ((1U << 24U) - 1U);
+  }
+
   float GlobalTime::animationTimeSeconds() const {
-    return (static_cast<uint32_t>(absoluteTimeMs()) & ((1U << 24U) - 1U)) / 1000.f;
+    return animationTimeMs() / 1000.f;
   }
 
   // whole milliseconds since startup, ignoring deterministic time settings.

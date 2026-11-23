@@ -22,6 +22,7 @@
 #pragma once
 
 #include <d3d9types.h>
+#include "../util/util_matrix.h"
 #include "../util/util_vector.h"
 
 namespace dxvk {
@@ -37,5 +38,11 @@ namespace dxvk {
 
     // Best fit light transform for a given legacy light
     static Matrix4 getLightTransform(const D3DLIGHT9& light);
+
+    // Returns the handedness of the world as a camera shows it, with X right and Y up on the screen.
+    // Returns 1 for a left-handed world, where Z points away from the viewer.
+    // Returns -1 for a right-handed world, where Z points toward the viewer.
+    // Returns 0 when the matrices are degenerate or not finite.
+    static int getWorldHandedness(const Matrix4d& worldToView, const Matrix4d& viewToProjection);
   };
 } // namespace dxvk

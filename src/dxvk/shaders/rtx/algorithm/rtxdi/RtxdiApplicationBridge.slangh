@@ -1257,9 +1257,19 @@ MemoryPolymorphicLight RAB_GetMemoryPolymorphicLight(uint lightID, bool usePrevi
 {
   MemoryPolymorphicLight memoryPolymorphicLight;
   if (usePreviousLights)
+  {
     memoryPolymorphicLight = previousLights[lightID];
+
+    // Note: The previous frame's gobo texture indices are invalid after a texture cache reset, so the gobo is dropped.
+    if (!cb.lightGoboArgs.enablePreviousLightGobos)
+    {
+      memoryPolymorphicLight.data3.w &= ~lightFlagGobo;
+    }
+  }
   else
+  {
     memoryPolymorphicLight = lights[lightID];
+  }
 
   return memoryPolymorphicLight;
 }
