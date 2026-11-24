@@ -80,6 +80,8 @@ interface IBasePayloadState
   property float waterSurfaceDistance { get; set; }
   // Whether the next water hit skips the silhouette test.
   property bool skipWaterSilhouette { get; set; }
+  // Whether to continue along the same ray past the previous hit
+  property bool continueAlongRay { get; set; }
 
 #ifdef RAY_PIPELINE
   // Returns if the caller should reorder before invokeHitObject, along with coherence hints to use

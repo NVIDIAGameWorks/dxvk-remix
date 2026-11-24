@@ -108,7 +108,7 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
 #endif
 
 #define RESOLVE_RAY_QUERY(                                                                \
-  extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance,       \
+  extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistanceArg,    \
   interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)     \
 {                                                                                         \
   /* Initialize the payload with the current ray's state */                               \
@@ -123,6 +123,13 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
   payload.coneRadius = ray.coneRadius;                                                    \
   payload.direction = ray.direction;                                                      \
                                                                                           \
+  /* Holds the distance along currentRay of the hit that the segment needs to continue    \
+   from. Hit distances passed to hitFunction are measured from that. */                   \
+  float resolveSegmentStartDistance = 0.0f;                                               \
+                                                                                          \
+  /* Distance along currentRay of the last hit. */                                        \
+  float resolveHitDistance = 0.0f;                                                        \
+                                                                                          \
   /* Loop until a surface is resolved, or the maximum interaction count is hit */         \
   uint8_t interactionIteration;                                                           \
   for (interactionIteration = uint8_t(1);; ++interactionIteration)                        \
@@ -130,13 +137,16 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
     /* Reset the hit distance used for Resolve logic for this next iteration */           \
                                                                                           \
     payload.continueResolving = interactionIteration < maxInteractions;                   \
+    payload.continueAlongRay = false;                                                     \
                                                                                           \
     /* Preform the ray trace with the desired information */                              \
                                                                                           \
     /* Note: Live state across this call (not put into payload as it is not */            \
     /* needed for anything on the hit function side of things):             */            \
     /* - interactionIteration                                               */            \
-    /* - currentRay.tMax                                                    */            \
+    /* - currentRay                                                         */            \
+    /* - resolveSegmentStartDistance                                        */            \
+    /* - resolveHitDistance                                                 */            \
                                                                                           \
     {                                                                                                   \
       /* Invoke a Ray Query */                                                                          \
@@ -160,6 +170,8 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
                                                                                           \
       /* Construct hit info from the hit */                                               \
       RAY_HIT_INFO_CREATE_RAY_QUERY_COMMITTED(rayHitInfo, rayQuery)                       \
+      resolveHitDistance = rayHitInfo.hitDistance;                                        \
+      rayHitInfo.hitDistance -= resolveSegmentStartDistance;                              \
                                                                                           \
       /* Call the hit function */                                                         \
       hitFunction(extraArgs, rayHitInfo, payload);                                        \
@@ -174,9 +186,21 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
                                                                                           \
     /* Update current ray for next iteration */                                           \
                                                                                           \
-    currentRay.Origin = payload.origin;                                                   \
-    currentRay.Direction = payload.direction;                                             \
-    currentRay.TMax = max(currentRay.TMax - segmentHitDistance, 0.0f);                    \
+    if (payload.continueAlongRay && canRayContinue(resolveHitDistance))                   \
+    {                                                                                     \
+      /* Keep the ray and continue just past the current hit */                           \
+      resolveSegmentStartDistance = resolveHitDistance;                                   \
+      currentRay.TMin = calcRayContinueMinDistance(resolveHitDistance);                   \
+    }                                                                                     \
+    else                                                                                  \
+    {                                                                                     \
+      currentRay.Origin = payload.origin;                                                 \
+      currentRay.Direction = payload.direction;                                           \
+      currentRay.TMin = 0.0f;                                                             \
+      currentRay.TMax =                                                                   \
+        max(currentRay.TMax - resolveSegmentStartDistance - segmentHitDistanceArg, 0.0f); \
+      resolveSegmentStartDistance = 0.0f;                                                 \
+    }                                                                                     \
   }                                                                                       \
                                                                                           \
   if ((cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)  \
@@ -191,7 +215,7 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
 #define RESOLVE_RAY_TRACE(                                                                \
   extraArgs, ray, flags, sbtRecordOffset,                                                 \
   hitFunction,                                                                            \
-  maxInteractions, payload, segmentHitDistance,                                           \
+  maxInteractions, payload, segmentHitDistanceArg,                                        \
   interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)     \
 {                                                                                         \
   /* Initialize the payload with the current ray's state */                               \
@@ -206,6 +230,9 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
   payload.coneRadius = ray.coneRadius;                                                    \
   payload.direction = ray.direction;                                                      \
                                                                                           \
+  /* Distance along currentRay of the hit that the segment continues from. */             \
+  float resolveSegmentStartDistance = 0.0f;                                               \
+                                                                                          \
   /* Loop until a surface is resolved, or the maximum interaction count is hit */         \
   uint8_t interactionIteration;                                                           \
   for (interactionIteration = uint8_t(1);; ++interactionIteration)                        \
@@ -213,13 +240,15 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
     /* Reset the hit distance used for Resolve logic for this next iteration */           \
                                                                                           \
     payload.continueResolving = interactionIteration < maxInteractions;                   \
+    payload.continueAlongRay = false;                                                     \
                                                                                           \
     /* Preform the ray trace with the desired information */                              \
                                                                                           \
     /* Note: Live state across this call (not put into payload as it is not */            \
     /* needed for anything on the hit function side of things):             */            \
     /* - interactionIteration                                               */            \
-    /* - currentRay.tMax                                                    */            \
+    /* - currentRay                                                         */            \
+    /* - resolveSegmentStartDistance                                        */            \
                                                                                           \
 {                                                                                         \
   /* Invoke Trace Ray */                                                                  \
@@ -247,9 +276,21 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
                                                                                           \
     /* Update current ray for next iteration */                                           \
                                                                                           \
-    currentRay.Origin = payload.origin;                                                   \
-    currentRay.Direction = payload.direction;                                             \
-    currentRay.TMax = max(currentRay.TMax - segmentHitDistance, 0.0f);                    \
+    if (payload.continueAlongRay)                                                         \
+    {                                                                                     \
+      /* Keep the ray and continue just past the current hit */                           \
+      resolveSegmentStartDistance = payload.segmentHitDistance;                           \
+      currentRay.TMin = calcRayContinueMinDistance(resolveSegmentStartDistance);          \
+    }                                                                                     \
+    else                                                                                  \
+    {                                                                                     \
+      currentRay.Origin = payload.origin;                                                 \
+      currentRay.Direction = payload.direction;                                           \
+      currentRay.TMin = 0.0f;                                                             \
+      currentRay.TMax =                                                                   \
+        max(currentRay.TMax - resolveSegmentStartDistance - segmentHitDistanceArg, 0.0f); \
+      resolveSegmentStartDistance = 0.0f;                                                 \
+    }                                                                                     \
   }                                                                                       \
                                                                                           \
   if ((cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)  \
@@ -263,9 +304,9 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
 #define RESOLVE_RAY_TRACE(                                                                \
   extraArgs, ray, flags, sbtRecordOffset,                                                 \
   hitFunction,                                                                            \
-  maxInteractions, payload, segmentHitDistance,                                           \
+  maxInteractions, payload, segmentHitDistanceArg,                                        \
   interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)     \
-  RESOLVE_RAY_QUERY(extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance, interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)
+  RESOLVE_RAY_QUERY(extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistanceArg, interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)
 
 #endif
    

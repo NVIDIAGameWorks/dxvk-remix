@@ -129,6 +129,7 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate, 
   geometryResolverState.waterSurfaceDistance = 0.0f;
   geometryResolverState.skipWaterSilhouette = false;
   geometryResolverState.dryUnderWater = false;
+  geometryResolverState.continueAlongRay = false;
 
   return geometryResolverState;
 }
@@ -2190,6 +2191,7 @@ void geometryResolverVertex(
         geometryResolverState.skipWaterSilhouette = true;
         geometryResolverState.waterSurfaceDistance = -max(rayInteraction.hitDistance - cb.waterSimArgs.shoreRefractionGap, 0.0f);
         geometryResolverState.continueResolving = true;
+        geometryResolverState.continueAlongRay = false;
       }
       else
       {
@@ -2958,6 +2960,7 @@ void geometryPSRResolverVertex(
       geometryPSRResolverState.origin = silhouetteRay.Origin + ray.direction * continueDistance;
       geometryPSRResolverState.segmentHitDistance = rayInteraction.hitDistance + continueDistance;
       geometryPSRResolverState.continueResolving = true;
+      geometryPSRResolverState.continueAlongRay = false;
       pomSilhouetteExtraDistance = continueDistance;
     }
   }

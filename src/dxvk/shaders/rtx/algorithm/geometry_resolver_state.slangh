@@ -53,6 +53,7 @@ struct GeometryResolverState : IBasePayloadState
   u16vec2 _compactedCoordinate;
   float _waterSurfaceDistance;
   uint8_t _waterFlags;
+  uint8_t _resolveFlags;
 
   // Property to get pixel coordinate
   property u16vec2 pixelCoordinate
@@ -81,6 +82,12 @@ struct GeometryResolverState : IBasePayloadState
   {
     get { return packedFlagGet(_waterFlags, 1 << 1); }
     set { _waterFlags = packedFlagAssign(_waterFlags, 1 << 1, newValue); }
+  }
+
+  property bool continueAlongRay
+  {
+    get { return packedFlagGet(_resolveFlags, 1 << 0); }
+    set { _resolveFlags = packedFlagAssign(_resolveFlags, 1 << 0, newValue); }
   }
 
   // Holds the compacted GBuffer slot that this pixel stores to. See loadGBufferStoreCoordinate.
@@ -437,6 +444,12 @@ struct GeometryPSRResolverState : IBasePayloadState
   {
     get { return packedFlagGet(_encodedFlags, 1 << 12); }
     set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 12, newValue); }
+  }
+
+  property bool continueAlongRay
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 13); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 13, newValue); }
   }
 
   // Water silhouettes are only tested in the primary pass.

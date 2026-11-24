@@ -471,6 +471,13 @@ struct PathState : IBasePayloadState
       set { }
   }
 
+  // Indirect rays continue from the offset ray origin
+  property bool continueAlongRay
+  {
+      get { return false; }
+      set { }
+  }
+
   // Packed members
 
   property vec3 direction
