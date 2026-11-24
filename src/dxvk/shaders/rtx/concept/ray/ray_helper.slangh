@@ -54,9 +54,33 @@ uint calculateMaterialType(RayHitInfo rayHitInfo)
   return (rayHitInfo.customIndex >> CUSTOM_INDEX_MATERIAL_TYPE_BIT) & surfaceMaterialTypeMask;    
 }
 
+// A segment that continues along the same ray starts one step past the last hit
+static const uint kRayContinueDistanceSteps = 1u;
+
+// Returns the minimum distance of a segment that continues along the ray past a hit at hitDistance.
+float calcRayContinueMinDistance(float hitDistance)
+{
+  return asfloat(asuint(hitDistance) + kRayContinueDistanceSteps);
+}
+
+// Returns the distance of the hit that a segment with minDistance continues from.
+float calcRayContinueStartDistance(float minDistance)
+{
+  return minDistance > 0.0f ? asfloat(asuint(minDistance) - kRayContinueDistanceSteps) : 0.0f;
+}
+
+// Returns whether a segment can continue past a hit at hitDistance
+bool canRayContinue(float hitDistance)
+{
+  // check if the minimum offset hitDistance (kRayContinueDistanceSteps ULPs) is >= the equivalent of FLT_MIN
+  return calcRayContinueMinDistance(hitDistance) >= asfloat(0x00800000u);
+}
+
+// Hit distance is calculated from the start of the resolve segment (which would be the ray origin unless the segment continues along the ray)
 #define RAY_HIT_INFO_CREATE_TRACE_RAY_HIT(variableName)                           \
 RayHitInfo variableName;                                                          \
-variableName.hitDistance = RayTCurrent();                                         \
+variableName.hitDistance =                                                        \
+  RayTCurrent() - calcRayContinueStartDistance(RayTMin());                        \
 variableName.barycentricCoordinates = barycentricsToUint(barycentricCoordinates); \
 variableName.primitiveIndex = PrimitiveIndex();                                   \
 variableName.customIndex = InstanceID();                                          \

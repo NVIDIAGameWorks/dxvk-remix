@@ -132,4 +132,11 @@ void main(inout GeometryPSRResolverState rayPayload : SV_RayPayload, in float2 b
   EmptyExtraArgs extraArgs;
   
   geometryPSRResolverVertex(extraArgs, rayHitInfo, rayPayload);
+
+  rayPayload.continueAlongRay = rayPayload.continueAlongRay && canRayContinue(RayTCurrent());
+
+  if (rayPayload.continueAlongRay)
+  {
+    rayPayload.segmentHitDistance = RayTCurrent();
+  }
 }

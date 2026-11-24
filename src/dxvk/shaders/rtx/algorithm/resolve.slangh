@@ -258,11 +258,13 @@ void resolveVertexFinalContinue<T : IBasePayloadState>(
   }
   else
   {
-    // Note: This will cause slight floating point error along the ray as the origin is shifted around without updating the direction,
-    // but it is likely fine. Ideally the tMin value instead could just be updated, but the hardware may not start the ray at tMin, resulting in excessive work.
+    // Resolve loops continue from the offset origin unless continueAlongRay is set and the offset skips any surface that is closer behind the hit than the offset.
     // Note: Triangle normal always faces the viewer, so using it negated will always allow the ray to be pushed through the triangle hit. This is important to properly offset
     // the ray to allow it to continue, using the ray direction instead will not work on triangles at a grazing angle.
     resolveVertexState.origin = rayOffsetSurfaceOriginHelper(surfaceInteraction, true);
+
+    // Continuing along the ray keeps every surface behind the hit but the next segment traverses from the original ray origin.
+    resolveVertexState.continueAlongRay = resolveVertexState.continueResolving;
   }
 }
 
@@ -638,6 +640,7 @@ float resolveVertex<T: IBasePayloadState>(
 
         // Note: Must call resolve final on any return which expects resolving to continue.
         resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+        resolveVertexState.continueAlongRay = false;
 
         return 1.0f;
       }
