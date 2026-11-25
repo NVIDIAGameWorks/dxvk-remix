@@ -78,6 +78,7 @@ jobs:
           _output\*.pdb
           _output\*.txt
           _output\usd\*
+          _output\numos\**
 
     - name: Build and move x64 DXVK
       shell: pwsh
@@ -91,6 +92,7 @@ jobs:
         Move-Item -Path _output\*.exe -Destination _output\.trex\
         Move-Item -Path _output\*.pdb -Destination _output\.trex\
         Move-Item -Path _output\usd -Destination _output\.trex\usd
+        Move-Item -Path _output\numos -Destination _output\.trex\numos
 
     - name: Build arm64
       shell: pwsh
@@ -109,6 +111,7 @@ jobs:
           _output\*.pdb
           _output\*.txt
           _output\usd\*
+          _output\numos\**
 
     - name: Move arm64 DXVK
       shell: pwsh
@@ -118,6 +121,7 @@ jobs:
         Move-Item -Path _output\*.exe -Destination _output\.trex_arm64\
         Move-Item -Path _output\*.pdb -Destination _output\.trex_arm64\
         Move-Item -Path _output\usd -Destination _output\.trex_arm64\usd
+        Move-Item -Path _output\numos -Destination _output\.trex_arm64\numos
 
     - name: Build Bridge
       shell: pwsh
@@ -147,10 +151,12 @@ jobs:
           _output\.trex\*.exe
           _output\.trex\*.pdb
           _output\.trex\usd\*
+          _output\.trex\numos\**
           _output\.trex_arm64\*.dll
           _output\.trex_arm64\*.exe
           _output\.trex_arm64\*.pdb
           _output\.trex_arm64\usd\*
+          _output\.trex_arm64\numos\**
 
   notify-slack-on-failure:
     runs-on: ubuntu-latest

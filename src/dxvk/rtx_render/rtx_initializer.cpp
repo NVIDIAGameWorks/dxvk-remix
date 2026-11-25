@@ -193,6 +193,7 @@ namespace dxvk {
     pCommon->metaToneMapping().prewarmShaders(pCommon->pipelineManager());
     pCommon->metaNeuralRadianceCache().prewarmShaders(pCommon->pipelineManager());
     pCommon->metaRayReconstruction().prewarmShaders(pCommon->pipelineManager());
+    pCommon->metaNumos().prewarmShaders();
 
     // Prewarm the rest of the pipelines that can be done automatically
     AutoShaderPipelinePrewarmer::prewarmComputePipelines(pCommon->pipelineManager());

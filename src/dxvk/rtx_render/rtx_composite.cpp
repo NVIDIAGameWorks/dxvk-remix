@@ -33,11 +33,14 @@
 #include "rtx_restir_gi_rayquery.h"
 #include "rtx_debug_view.h"
 #include "rtx_sparse_rendering.h"
+#include "rtx_numos.h"
+#include "rtx_dlss.h"
 
 #include "../util/util_global_time.h"
 
 #include <rtx_shaders/composite.h>
 #include <rtx_shaders/composite_alpha_blend.h>
+#include <rtx_shaders/composite_sky_provider.h>
 #include "rtx_texture_manager.h"
 
 namespace dxvk {
@@ -141,6 +144,90 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(CompositeShader);
+
+    class CompositeSkyProviderShader : public ManagedShader {
+      SHADER_SOURCE(CompositeSkyProviderShader, VK_SHADER_STAGE_COMPUTE_BIT, composite_sky_provider)
+
+      BEGIN_PARAMETER()
+        RW_TEXTURE2D_READONLY(COMPOSITE_SHARED_FLAGS_INPUT)
+        TEXTURE2D(COMPOSITE_SHARED_RADIANCE_RG_INPUT)
+        TEXTURE2D(COMPOSITE_SHARED_RADIANCE_B_INPUT)
+        RW_TEXTURE2D_READONLY(COMPOSITE_PRIMARY_ATTENUATION_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_SPECULAR_ALBEDO_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_LINEAR_VIEW_Z_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
+        RW_TEXTURE2D_READONLY(COMPOSITE_SECONDARY_ATTENUATION_INPUT)
+        TEXTURE2D(COMPOSITE_SECONDARY_ALBEDO_INPUT)
+        TEXTURE2D(COMPOSITE_SECONDARY_SPECULAR_ALBEDO_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+        CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
+        TEXTURE2D(COMPOSITE_BSDF_FACTOR_INPUT)
+        TEXTURE2D(COMPOSITE_BSDF_FACTOR2_INPUT)
+        TEXTURE2D(COMPOSITE_PIXEL_SAMPLING_RATE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_Y_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
+        TEXTURE2D(COMPOSITE_ALPHA_GBUFFER_INPUT)
+        TEXTURE2D(COMPOSITE_ACTIVE_PIXEL_MASK_INPUT)
+        TEXTURE2D(COMPOSITE_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
+        TEXTURE2D(COMPOSITE_TILE_ACTIVE_COUNTS_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_SURFACE_FLAGS_INPUT)
+        TEXTURE2DARRAY(COMPOSITE_BLUE_NOISE_TEXTURE)
+        SAMPLER3D(COMPOSITE_VALUE_NOISE_SAMPLER)
+        SAMPLER2D(COMPOSITE_SKY_LIGHT_TEXTURE)
+        SAMPLERCUBE(COMPOSITE_SKY_PROBE_TEXTURE)
+        TEXTURE2D(COMPOSITE_SKY_FOREGROUND_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_SECONDARY_HIT_DISTANCE_INPUT)
+        CONSTANT_BUFFER(COMPOSITE_SKY_ARGS_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_CLOUD_RENDER_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_CLOUD_DEPTH_INPUT)
+        TEXTURE3D(COMPOSITE_SKY_HAZE_NEAR_SCATTER_INPUT)
+        TEXTURE3D(COMPOSITE_SKY_HAZE_FAR_SCATTER_INPUT)
+        TEXTURE3D(COMPOSITE_SKY_HAZE_FAR_TRANSMITTANCE_INPUT)
+        TEXTURE3D(COMPOSITE_SKY_HAZE_FROXEL_AUX_INPUT)
+        STRUCTURED_BUFFER(COMPOSITE_SKY_HAZE_LIGHTS_INPUT)
+        STRUCTURED_BUFFER(COMPOSITE_SKY_HAZE_LIGHT_CLUSTERS_INPUT)
+        SAMPLER(COMPOSITE_SKY_HAZE_SAMPLER_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_TRANSMITTANCE_LUT_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_MULTISCATTERING_LUT_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_VIEW_LUT_INPUT)
+        SAMPLER(COMPOSITE_SKY_VIEW_SAMPLER_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_CLOUD_TRANSMITTANCE_LUT_INPUT)
+        TEXTURE3D(COMPOSITE_SKY_CLOUD_SHADOW_MAP_INPUT)
+        SAMPLER(COMPOSITE_SKY_CLOUD_NOISE_SAMPLER_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_CLOUD_SECONDARY_LUT_INPUT)
+        STRUCTURED_BUFFER(COMPOSITE_SKY_STAR_CELLS_INPUT)
+        STRUCTURED_BUFFER(COMPOSITE_SKY_STARS_INPUT)
+        STRUCTURED_BUFFER(COMPOSITE_SKY_MILKY_WAY_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_STARLIGHT_LOW_INPUT)
+        TEXTURE2D(COMPOSITE_SKY_MOON_INPUT)
+
+        RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_SKY_BIAS_MASK_INPUT_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_SKY_DEPTH_INPUT_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_SKY_MOTION_VECTOR_INPUT_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_SKY_DEPTH_DLSSRR_INPUT_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_SKY_MOTION_VECTOR_DLSSRR_INPUT_OUTPUT)
+
+        RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_DEBUG_VIEW_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_DLSS_NR_CONTROL_MASK_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_PRIMARY_COVERAGE_OUTPUT)
+      END_PARAMETER()
+    };
+  }
+
+  void CompositePass::prewarmSkyProviderShader() {
+    CompositeSkyProviderShader::getShader();
   }
 
   CompositePass::CompositePass(dxvk::DxvkDevice* device)
@@ -509,6 +596,29 @@ namespace dxvk {
     compositeArgs.skyBrightness = RtxOptions::skyBrightness();
     compositeArgs.skyUseProbeForPrimaryRays = skyUseProbeForPrimaryRays();
 
+    RtxNumos& numosSky = ctx->getCommonObjects()->metaNumos();
+    numosSky.bindCompositeResources(*ctx, compositeArgs);
+    if (compositeArgs.skyProviderActive) {
+      compositeArgs.skyMissDepth = sceneManager.getGlobals().clearColorDepth;
+      // The unordered emissive mask stays only where DLSS's anti-ghost option asks for it.
+      compositeArgs.skyBiasMaskKeepUnorderedEmissive =
+        RtxOptions::isDLSSEnabled() && ctx->getCommonObjects()->metaDLSS().isBiasCurrentColorEnabled();
+
+      ctx->bindResourceView(COMPOSITE_SKY_FOREGROUND_INPUT, rtOutput.m_skyForeground.view, nullptr);
+      ctx->bindResourceView(COMPOSITE_SKY_SECONDARY_HIT_DISTANCE_INPUT, rtOutput.m_secondaryHitDistance.view, nullptr);
+      ctx->bindResourceView(COMPOSITE_SKY_BIAS_MASK_INPUT_OUTPUT, compositeArgs.skyWriteBiasMask
+        ? rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::ReadWrite)
+        : nullptr, nullptr);
+      ctx->bindResourceView(COMPOSITE_SKY_DEPTH_INPUT_OUTPUT, rtOutput.m_primaryDepth.view, nullptr);
+      ctx->bindResourceView(COMPOSITE_SKY_MOTION_VECTOR_INPUT_OUTPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
+      ctx->bindResourceView(COMPOSITE_SKY_DEPTH_DLSSRR_INPUT_OUTPUT, compositeArgs.useRayReconstruction
+        ? rtOutput.m_primaryDepthDLSSRR.view(Resources::AccessType::ReadWrite)
+        : nullptr, nullptr);
+      ctx->bindResourceView(COMPOSITE_SKY_MOTION_VECTOR_DLSSRR_INPUT_OUTPUT, compositeArgs.useRayReconstruction
+        ? rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR.view
+        : nullptr, nullptr);
+    }
+
     const bool sparseRenderingEnabled = rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off;
 
     Rc<DxvkBuffer> cb = getCompositeConstantsBuffer();
@@ -528,7 +638,9 @@ namespace dxvk {
     {
       ScopedGpuProfileZone(ctx, "Composition");
       ctx->setFramePassStage(RtxFramePassStage::Composition);
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, CompositeShader::getShader());
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, compositeArgs.skyProviderActive
+        ? CompositeSkyProviderShader::getShader()
+        : CompositeShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
 

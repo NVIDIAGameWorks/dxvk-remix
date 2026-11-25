@@ -30,6 +30,9 @@
 // done, a new approach will be needed).
 #define ENABLE_VOLUMETRIC_RADIANCE_SCALE 1
 
+// The froxel radiance cache keeps the shadows of the sky provider's clouds.
+#define VOLUME_LIGHT_SAMPLE_CLOUD_SHADOW 1
+
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/volumetrics/volume_integrate_bindings.slangh"
 

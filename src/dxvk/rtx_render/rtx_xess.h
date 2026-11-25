@@ -120,6 +120,7 @@ namespace dxvk {
     VkExtent2D m_inputSize;
     VkExtent2D m_xessOutputSize;
     bool m_recreate;
+    bool m_useResponsiveMask = false;
     float m_lastResolutionScale; // Track resolution scale changes for Custom preset
 
 #else

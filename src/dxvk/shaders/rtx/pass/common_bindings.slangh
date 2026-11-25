@@ -28,6 +28,7 @@
 #include "rtx/pass/common_binding_indices.h"
 
 #include "rtx/pass/raytrace_args.h"
+#include "numos/lib/atmosphere_args.h"
 #include "rtx/concept/surface/surface.h"
 #include "rtx/concept/surface_material/surface_material.h"
 #include "rtx/concept/volume/volume.h"
@@ -121,3 +122,49 @@ Sampler3D<float4> ValueNoiseSampler;
 
 layout(binding = BINDING_SAMPLER_READBACK_BUFFER) 
 RWStructuredBuffer<uint32_t> SamplerFeedbackBuffer;
+
+// The sky resources keep the names that numos/host/numos_host.slangh expects.
+layout(binding = BINDING_SKY_ARGS)
+ConstantBuffer<AtmosphereArgs> skyArgs;
+
+layout(binding = BINDING_SKY_TRANSMITTANCE_LUT)
+Texture2D AtmosphereTransmittanceLut;
+
+layout(binding = BINDING_SKY_MULTISCATTERING_LUT)
+Texture2D AtmosphereMultiscatteringLut;
+
+layout(binding = BINDING_SKY_VIEW_LUT)
+Texture2D AtmosphereSkyViewLut;
+
+layout(binding = BINDING_SKY_VIEW_SAMPLER)
+SamplerState AtmosphereSkyViewSampler;
+
+layout(binding = BINDING_SKY_CLOUD_TRANSMITTANCE_LUT)
+Texture2D<float4> AtmosphereCloudSkyTransmittanceLut;
+
+layout(binding = BINDING_SKY_CLOUD_SHADOW_MAP)
+Texture3D<float2> AtmosphereCloudShadowMap;
+
+layout(binding = BINDING_SKY_CLOUD_NOISE_SAMPLER)
+SamplerState AtmosphereCloudNoise3DSampler;
+
+layout(binding = BINDING_SKY_CLOUD_SECONDARY_LUT)
+Texture2D<float4> AtmosphereCloudSecondaryLut;
+
+layout(binding = BINDING_SKY_STAR_CELLS)
+StructuredBuffer<uint> NightSkyStarCells;
+
+layout(binding = BINDING_SKY_STARS)
+StructuredBuffer<float4> NightSkyStars;
+
+layout(binding = BINDING_SKY_MILKY_WAY)
+StructuredBuffer<uint> NightSkyMilkyWay;
+
+layout(binding = BINDING_SKY_STARLIGHT_LOW)
+Texture2D<float4> NightSkyStarlightLow;
+
+layout(binding = BINDING_SKY_MOON)
+Texture2D<float4> NightSkyMoon;
+
+#define ATMOSPHERE_AVAILABLE
+#define NIGHT_SKY_AVAILABLE

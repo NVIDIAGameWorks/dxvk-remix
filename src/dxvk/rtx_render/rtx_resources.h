@@ -289,6 +289,8 @@ namespace dxvk
 
       Resource m_sharedRadianceRG;
       Resource m_sharedRadianceB;
+      // Holds a packed SkyForeground per pixel, and exists only while the sky provider is selected.
+      Resource m_skyForeground;
       AliasedResource m_sharedIntegrationSurfacePdf;
       Resource m_sharedMaterialData0;
       Resource m_sharedMaterialData1;

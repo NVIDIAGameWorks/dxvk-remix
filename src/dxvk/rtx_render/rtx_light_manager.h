@@ -80,6 +80,8 @@ public:
 
   const std::unordered_map<XXH64_hash_t, RtLight>& getLightTable() const { return m_lights; }
   const std::unordered_map<uint64_t, RtLight>& getExternallyTrackedLightTable() const { return m_externallyTrackedLights; }
+  // The list is valid from prepareSceneData until lights are next removed.
+  const std::vector<RtLight*>& getLinearizedLights() const { return m_linearizedLights; }
   const Rc<DxvkBuffer> getLightBuffer() const { return m_lightBuffer; }
   const Rc<DxvkBuffer> getPreviousLightBuffer() const { return m_previousLightBuffer.ptr() ? m_previousLightBuffer : m_lightBuffer; }
   const Rc<DxvkBuffer> getLightMappingBuffer() const { return m_lightMappingBuffer; }

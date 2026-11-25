@@ -53,6 +53,23 @@
 #define COMMON_MAX_BINDING                       BINDING_LIGHT_IDENTITY_BUFFER
 #define COMMON_NUM_BINDINGS                      (COMMON_MAX_BINDING + 1)
 
+// The sky bindings sit above every pass's own bindings, so they are not part of COMMON_MAX_BINDING.
+// A pass that uses COMMON_RAYTRACING_BINDINGS cannot use these indices.
+#define BINDING_SKY_ARGS                         400
+#define BINDING_SKY_TRANSMITTANCE_LUT            401
+#define BINDING_SKY_MULTISCATTERING_LUT          402
+#define BINDING_SKY_VIEW_LUT                     403
+#define BINDING_SKY_VIEW_SAMPLER                 404
+#define BINDING_SKY_CLOUD_TRANSMITTANCE_LUT      405
+#define BINDING_SKY_CLOUD_SHADOW_MAP             406
+#define BINDING_SKY_CLOUD_NOISE_SAMPLER          407
+#define BINDING_SKY_CLOUD_SECONDARY_LUT          408
+#define BINDING_SKY_STAR_CELLS                   409
+#define BINDING_SKY_STARS                        410
+#define BINDING_SKY_MILKY_WAY                    411
+#define BINDING_SKY_STARLIGHT_LOW                412
+#define BINDING_SKY_MOON                         413
+
 // Note: Used to represent a non-existent buffer
 #define BINDING_INDEX_INVALID uint16_t(0xFFFF)
 
@@ -93,6 +110,20 @@
   RW_STRUCTURED_BUFFER(BINDING_GPU_PRINT_BUFFER)                    \
   SAMPLER3D(BINDING_VALUE_NOISE_SAMPLER)                            \
   RW_STRUCTURED_BUFFER(BINDING_SAMPLER_READBACK_BUFFER)             \
-  STRUCTURED_BUFFER(BINDING_LIGHT_IDENTITY_BUFFER)
+  STRUCTURED_BUFFER(BINDING_LIGHT_IDENTITY_BUFFER)                  \
+  CONSTANT_BUFFER(BINDING_SKY_ARGS)                                 \
+  TEXTURE2D(BINDING_SKY_TRANSMITTANCE_LUT)                          \
+  TEXTURE2D(BINDING_SKY_MULTISCATTERING_LUT)                        \
+  TEXTURE2D(BINDING_SKY_VIEW_LUT)                                   \
+  SAMPLER(BINDING_SKY_VIEW_SAMPLER)                                 \
+  TEXTURE2D(BINDING_SKY_CLOUD_TRANSMITTANCE_LUT)                    \
+  TEXTURE3D(BINDING_SKY_CLOUD_SHADOW_MAP)                           \
+  SAMPLER(BINDING_SKY_CLOUD_NOISE_SAMPLER)                          \
+  TEXTURE2D(BINDING_SKY_CLOUD_SECONDARY_LUT)                        \
+  STRUCTURED_BUFFER(BINDING_SKY_STAR_CELLS)                         \
+  STRUCTURED_BUFFER(BINDING_SKY_STARS)                              \
+  STRUCTURED_BUFFER(BINDING_SKY_MILKY_WAY)                          \
+  TEXTURE2D(BINDING_SKY_STARLIGHT_LOW)                              \
+  TEXTURE2D(BINDING_SKY_MOON)
   
 #endif

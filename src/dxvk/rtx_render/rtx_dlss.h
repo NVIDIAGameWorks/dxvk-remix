@@ -69,6 +69,11 @@ namespace dxvk {
 
     explicit DxvkDLSS(DxvkDevice* device);
     ~DxvkDLSS();
+
+    bool isBiasCurrentColorEnabled() const {
+      return mBiasCurrentColorEnabled;
+    }
+
     // Note: using template to make this compilable when DLSS SDK types are not available.
     template<typename NVSDK_NGX_T>
     static NVSDK_NGX_T profileToQuality(DLSSProfile profile);

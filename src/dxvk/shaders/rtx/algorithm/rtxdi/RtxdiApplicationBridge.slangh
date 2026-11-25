@@ -42,6 +42,13 @@
 #include "rtx/algorithm/volume_integrator_helpers.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 #include "rtx/algorithm/rtxdi/rtxdi_reservoir_pages.slangh"
+// The volume integrate pass defines this to shadow its light samples with the sky provider's clouds.
+#ifndef VOLUME_LIGHT_SAMPLE_CLOUD_SHADOW
+#define VOLUME_LIGHT_SAMPLE_CLOUD_SHADOW 0
+#endif
+#if VOLUME_LIGHT_SAMPLE_CLOUD_SHADOW
+#include "rtx/algorithm/sky_provider.slangh"
+#endif
 #include "rtxdi/SparseNeighborSearchParameters.h"
 
 static const uint kReprojectionConfidenceHistoryLength = 16;
@@ -1287,11 +1294,29 @@ RAB_LightSample RAB_GetLightSample(uint lightID, float2 lightUV, RAB_Surface sur
   return RAB_GetLightSample(lightID, lightUV, surface.minimalSurfaceInteraction, usePreviousLights);
 }
 
+#if VOLUME_LIGHT_SAMPLE_CLOUD_SHADOW
+// Only the volume integration applies this, so the resampling picks samples without it.
+void applyVolumeCloudShadow(
+  inout RAB_LightSample lightSample, MemoryPolymorphicLight memoryPolymorphicLight, RAB_VolumeInteraction volumeInteraction)
+{
+  if (skyProviderActive() && memoryPolymorphicLightIsCloudShadowed(memoryPolymorphicLight))
+  {
+    const vec3 position = volumeInteraction.volumeInteraction.position;
+    lightSample.radiance *= skyProviderCloudShadow(position, normalize(lightSample.position - position));
+  }
+}
+#endif
+
 RAB_LightSample RAB_GetLightSample(uint lightID, float2 lightUV, RAB_VolumeInteraction volumeInteraction, bool usePreviousLights = false)
 {
   const MemoryPolymorphicLight memoryPolymorphicLight = RAB_GetMemoryPolymorphicLight(lightID, usePreviousLights);
 
-  return memoryPolymorphicLightSampleArea(memoryPolymorphicLight, lightUV, volumeInteraction.volumeInteraction);
+  RAB_LightSample lightSample = memoryPolymorphicLightSampleArea(memoryPolymorphicLight, lightUV, volumeInteraction.volumeInteraction);
+#if VOLUME_LIGHT_SAMPLE_CLOUD_SHADOW
+  applyVolumeCloudShadow(lightSample, memoryPolymorphicLight, volumeInteraction);
+#endif
+
+  return lightSample;
 }
 
 RAB_LightSample RAB_GetLightSampleWithTypeHint(uint lightID, float2 lightUV, uint lightType, RAB_Surface surface)
@@ -1305,7 +1330,12 @@ RAB_LightSample RAB_GetLightSampleWithTypeHint(uint lightID, float2 lightUV, uin
 {
   const DecodedPolymorphicLight decodedPolymorphicLight = RAB_GetDecodedPolymorphicLightWithTypeHint(lightID, lightType);
   
-  return decodedPolymorphicLightSampleArea(decodedPolymorphicLight, lightUV, volumeInteraction.volumeInteraction);
+  RAB_LightSample lightSample = decodedPolymorphicLightSampleArea(decodedPolymorphicLight, lightUV, volumeInteraction.volumeInteraction);
+#if VOLUME_LIGHT_SAMPLE_CLOUD_SHADOW
+  applyVolumeCloudShadow(lightSample, lights[lightID], volumeInteraction);
+#endif
+
+  return lightSample;
 }
 
 RAB_LightSample RAB_GetPortalSpaceLightSample(uint lightIdx, float2 lightUV, uint8_t portalIdx, MinimalSurfaceInteraction minimalSurfaceInteraction, bool usePreviousLights = false)

@@ -146,6 +146,7 @@
 #define GBUFFER_BINDING_PRIMARY_WORLD_SHADING_NORMAL_DENSE_OUTPUT               156
 
 #define GBUFFER_BINDING_WATER_SIM_HEIGHT                                        157
+#define GBUFFER_BINDING_SKY_FOREGROUND_OUTPUT                                   158
 
 #define GBUFFER_MIN_BINDING                         GBUFFER_BINDING_LINEAR_WRAP_SAMPLER
 

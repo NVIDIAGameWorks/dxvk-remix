@@ -65,6 +65,7 @@
 #include "rtx/utility/camera_transport.slangh"
 #include "rtx/utility/froxel.slangh"
 #include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/utility/sky_foreground.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/concept/camera/camera.slangh"
 #include "rtx/concept/ray/ray.slangh"
@@ -74,6 +75,7 @@
 #include "rtx/concept/surface/alpha_blend_surface.slangh"
 #include "rtx/concept/light/light.slangh"
 #include "rtx/algorithm/resolve.slangh"
+#include "rtx/algorithm/sky_provider.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
 #include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
 #include "rtx/algorithm/nee_cache_light.slangh"
@@ -202,12 +204,27 @@ void geometryResolverWriteFlags(GeometryFlags geometryFlags, uvec2 pixelCoordina
   }
 }
 
+// The haze needs the distance of the PSR surface, which the PSR passes replace with their virtual distances.
+void geometryResolverStoreSkyPsrSurface(uvec2 pixelCoordinate, float hitDistance)
+{
+  if (!skyProviderActive())
+  {
+    return;
+  }
+
+  SkyForeground foreground = skyForegroundUnpack(SkyForegroundOutput[pixelCoordinate]);
+  foreground.depthKm = -max(numosWorldToKm(hitDistance, skyArgs), 1e-5f);
+  SkyForegroundOutput[pixelCoordinate] = skyForegroundPack(foreground);
+}
+
 // Stores the hit distance and cone radius that both PSR lobes resume the path with.
 // The compacted GBuffer temporarily stores them in the primary depth outputs,
 // so nothing may read those at a PSR pixel before the last PSR lobe overwrites them.
 void geometryResolverStorePSRContinuation(
   uvec2 pixelCoordinate, uvec2 compactedCoordinate, float hitDistance, float coneRadius)
 {
+  geometryResolverStoreSkyPsrSurface(pixelCoordinate, hitDistance);
+
   if (hasGBufferSlot(compactedCoordinate))
   {
     PrimaryConeRadius[compactedCoordinate] = coneRadius;
@@ -2015,6 +2032,11 @@ void updateSharcOnGBufferMiss(
     {
       skyRadiance = cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
+    else if (skyProviderActive())
+    {
+      // The sun and moons reach the cache as lights, so their disks are left out.
+      skyRadiance = skyProviderRadiance(direction, pixelCoordinate, false, NUMOS_SKY_DISKS_NONE);
+    }
     else
     {
       skyRadiance = cb.skyBrightness * SkyProbe.SampleLevel(direction, 0);
@@ -2255,6 +2277,19 @@ void geometryResolverVertex(
   // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
   geometryResolverState.radiance += emissiveRadiance * geometryResolverState.attenuation;
   geometryResolverState.attenuation *= radianceAttenuation;
+
+  if (skyProviderActive())
+  {
+    SkyForeground foreground = skyForegroundUnpack(SkyForegroundOutput[geometryResolverState.pixelCoordinate]);
+    foreground.radiance = geometryResolverState.radiance;
+    foreground.attenuation = calcBt709Luminance(geometryResolverState.attenuation);
+    if (rayInteractionHasHit(rayInteraction) && (any(emissiveRadiance > 0.0f) || any(radianceAttenuation < 1.0f)))
+    {
+      const float depthKm = max(numosWorldToKm(geometryResolverState.accumulatedHitDistance, skyArgs), 1e-5f);
+      foreground.depthKm = foreground.hasSeparateLayers() ? min(foreground.depthKm, depthKm) : depthKm;
+    }
+    SkyForegroundOutput[geometryResolverState.pixelCoordinate] = skyForegroundPack(foreground);
+  }
 
   // Record alpha blend surface when stochastic alpha blend is enabled
   if (GBUFFER_FEATURE_STOCHASTIC_ALPHA && cb.enableStochasticAlphaBlend && isStochasticAlphaBlend)
@@ -3011,6 +3046,12 @@ void geometryPSRResolverVertex(
     {
        skyRadiance = cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, ray.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
+    else if (skyProviderActive())
+    {
+      // A PSR path is specular from the camera on, so no light sample follows it and it carries the disks.
+      skyRadiance = skyProviderRadiance(
+        ray.direction, geometryPSRResolverState.pixelCoordinate, false, NUMOS_SKY_DISKS_ALL);
+    }
     else
     {
       // Output radiance from sky probe
@@ -3454,6 +3495,11 @@ void geometryPSRResolver(inout GeometryPSRResolverState psrResolverState) {
 
 void geometryResolver(ivec2 pixelCoordinate) {
   const uvec2 compactedCoordinate = loadGBufferStoreCoordinate(uvec2(pixelCoordinate));
+
+  if (skyProviderActive())
+  {
+    SkyForegroundOutput[pixelCoordinate] = skyForegroundPack(skyForegroundCreateEmpty());
+  }
 
   // Initialize Geometry Resolver State
 
@@ -4372,6 +4418,7 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
       useAlternateDisocclusionThreshold || transmissionPSRSample.useAlternateDisocclusionThreshold;
   }
 
+  geometryResolverStoreSkyPsrSurface(pixelCoordinate, PrimaryHitDistance[pixelCoordinate]);
   SecondaryHitDistance[pixelCoordinate] = PrimaryHitDistance[pixelCoordinate];
   PrimaryDisocclusionThresholdMix[pixelCoordinate] = useAlternateDisocclusionThreshold ? 1.0f : 0.0f;
 

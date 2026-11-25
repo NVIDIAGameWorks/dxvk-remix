@@ -30,6 +30,7 @@
 #include "rtx_options.h"
 #include "dxvk_device.h"
 #include "rtx_xess.h"
+#include "rtx_numos.h"
 #include "rtx_camera.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_render/rtx_shader_manager.h"
@@ -303,7 +304,9 @@ namespace dxvk {
     }
     
     xess_quality_settings_t quality = presetToQuality(m_currentPreset);
-    xess_init_flags_t preFlags = XESS_INIT_FLAG_NONE;
+    xess_init_flags_t preFlags = m_useResponsiveMask
+      ? XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK
+      : XESS_INIT_FLAG_NONE;
     
     // Trigger pre-build in background to reduce later initialization stalls
     result = xessVKBuildPipelines(m_xessContext, VK_NULL_HANDLE, false, preFlags);
@@ -341,7 +344,7 @@ namespace dxvk {
     initParams.qualitySetting = presetToQuality(m_currentPreset);
 
     // Set initialization flags based on renderer state and user options
-    initParams.initFlags = XESS_INIT_FLAG_NONE;
+    initParams.initFlags = preFlags;
     
     initParams.creationNodeMask = 1;
     initParams.visibleNodeMask = 1;
@@ -435,6 +438,14 @@ namespace dxvk {
       return;
     }
 
+    // The sky's clouds and haze move with the wind rather than with the motion vectors.
+    // The share of them in each pixel is the responsive mask, which the context has to be created for.
+    const bool useResponsiveMask = device()->getCommon()->metaNumos().writesUpscalerBiasMask();
+    if (useResponsiveMask != m_useResponsiveMask) {
+      m_useResponsiveMask = useResponsiveMask;
+      m_initialized = false;
+    }
+
     // Initialize XeSS if needed (similar to DLSS pattern)
     if (m_recreate || !m_initialized) {
       // Use the target extent that was already calculated in setSetting()
@@ -473,11 +484,15 @@ namespace dxvk {
     }
     
     // Set up image barriers for XeSS inputs and outputs
-    std::array<Rc<DxvkImageView>, 4> inputs = {
+    const Rc<DxvkImageView> responsiveView = m_useResponsiveMask
+      ? rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Read)
+      : nullptr;
+    std::array<Rc<DxvkImageView>, 5> inputs = {
       rtOutput.m_compositeOutput.view(Resources::AccessType::Read),
       rtOutput.m_primaryScreenSpaceMotionVector.view,
       rtOutput.m_primaryDepth.view,
-      nullptr // Placeholder for auto-exposure texture
+      nullptr, // Placeholder for auto-exposure texture
+      responsiveView
     };
 
     auto& autoExposure = device()->getCommon()->metaAutoExposure();
@@ -619,6 +634,15 @@ namespace dxvk {
     execParams.depthTexture.width = depthView->imageInfo().extent.width;
     execParams.depthTexture.height = depthView->imageInfo().extent.height;
 
+    if (responsiveView != nullptr) {
+      execParams.responsivePixelMaskTexture.imageView = responsiveView->handle();
+      execParams.responsivePixelMaskTexture.image = responsiveView->image()->handle();
+      execParams.responsivePixelMaskTexture.subresourceRange = responsiveView->subresources();
+      execParams.responsivePixelMaskTexture.format = responsiveView->info().format;
+      execParams.responsivePixelMaskTexture.width = responsiveView->imageInfo().extent.width;
+      execParams.responsivePixelMaskTexture.height = responsiveView->imageInfo().extent.height;
+    }
+
     // Output texture
     auto outputView = rtOutput.m_finalOutput.view(Resources::AccessType::Write);
     execParams.outputTexture.imageView = outputView->handle();
@@ -663,6 +687,21 @@ namespace dxvk {
         rtOutput.m_compositeOutputExtent);
     } else {
       // XeSS execution successful - removed debug logging to avoid spam
+    }
+
+    if (responsiveView != nullptr) {
+      // Motion blur writes to this image through an alias, so it needs its own layout back.
+      barriers.accessImage(
+        responsiveView->image(),
+        responsiveView->imageSubresources(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_ACCESS_SHADER_READ_BIT,
+        responsiveView->imageInfo().layout,
+        responsiveView->imageInfo().stages,
+        responsiveView->imageInfo().access);
+      renderContext->getCommandList()->trackResource<DxvkAccess::None>(responsiveView);
+      renderContext->getCommandList()->trackResource<DxvkAccess::Write>(responsiveView->image());
     }
 
     // Restore barriers for output texture

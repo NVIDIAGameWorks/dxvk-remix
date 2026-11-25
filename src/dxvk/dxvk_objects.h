@@ -34,6 +34,10 @@
 #include "dxvk_renderpass.h"
 #include "dxvk_unbound.h"
 #include "rtx_render/rtx_global_volumetrics.h"
+// NV-DXVK start: NUMOS sky
+#include "rtx_render/rtx_numos.h"
+#include "rtx_render/rtx_numos_weather.h"
+// NV-DXVK end
 #include "rtx_render/rtx_pathtracer_gbuffer.h"
 #include "rtx_render/rtx_pathtracer_integrate_direct.h"
 #include "rtx_render/rtx_pathtracer_integrate_indirect.h"
@@ -145,6 +149,16 @@ namespace dxvk {
     RtxGlobalVolumetrics& metaGlobalVolumetrics() {
       return m_globalVolumetrics.get();
     }
+
+    // NV-DXVK start: NUMOS sky
+    RtxNumos& metaNumos() {
+      return m_numos.get();
+    }
+
+    NumosWeather& metaNumosWeather() {
+      return m_numosWeather.get();
+    }
+    // NV-DXVK end
 
     SparseRendering& metaSparseRendering() {
       return m_sparseRendering.get();
@@ -382,6 +396,10 @@ namespace dxvk {
 
     // RTX Shaders
     Active<RtxGlobalVolumetrics>            m_globalVolumetrics;
+    // NV-DXVK start: NUMOS sky
+    Active<RtxNumos>                        m_numos;
+    Active<NumosWeather>                    m_numosWeather;
+    // NV-DXVK end
     Active<SparseRendering>                 m_sparseRendering;
     Active<DxvkPathtracerGbuffer>           m_pathtracerGbuffer;
     Active<DxvkRtxdiRayQuery>               m_rtxdiRayQuery;

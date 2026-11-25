@@ -36,6 +36,7 @@
 #include "rtx/pass/nrc/nrc_integrator_utilities.slangh"
 #include "rtx/pass/sharc/sharc_integrator_utilities.slangh"
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+#include "rtx/algorithm/sky_provider.slangh"
 
 #define ENABLE_RESTIR_GI !(ENABLE_NRC || ENABLE_SHARC)
 
@@ -52,6 +53,7 @@ PathState pathStateCreateEmpty(GeometryFlags geometryFlags)
   // direction assumed to be set by primary vertex intergation.
 
   pathState.bounceIteration = uint8_t(1);
+  pathState._coneSpreadAngle = 0.h;
   pathState.coneSpreadAngle = cb.screenSpacePixelSpreadHalfAngle;
   // NV-DXVK start: Initialize radius storage before assigning its packed visibility flag.
   pathState._coneRadius = 0.h;
@@ -381,6 +383,11 @@ void integratePathVertex(
     {
       skyRadiance = cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, pathState.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
+    else if (skyProviderActive())
+    {
+      skyRadiance = skyProviderRadiance(
+        pathState.direction, pathState.pixelCoordinate, pathState.isSkyGatherPath, NUMOS_SKY_DISKS_NONE);
+    }
     else
     {
       skyRadiance = cb.skyBrightness * SkyProbe.SampleLevel(pathState.direction, 0);
@@ -621,6 +628,9 @@ void integratePathVertex(
         pathState.isSpecularVisibilityPath, materialType, continuationLobe);
       // NV-DXVK end
 
+      pathState.isSkyGatherPath = materialType == surfaceMaterialTypeOpaque &&
+        (continuationLobe == opaqueLobeTypeDiffuseReflection || continuationLobe == opaqueLobeTypeDiffuseTransmission);
+
       // Stop recording hit geometry when translucent material emitting a scattering ray
       if (materialType == surfaceMaterialTypeTranslucent && dot(sampledRay.direction, pathState.direction) < 0.9)
       {
@@ -729,6 +739,13 @@ void integratePathVertex(
         }
       }
 
+
+      if (skyProviderActive() && lightSampleValid && lightIdx != kInvalidLightIdx &&
+          memoryPolymorphicLightIsCloudShadowed(lights[lightIdx]))
+      {
+        const vec3 directionToLight = normalize(lightSample.position - surfaceInteraction.position);
+        lightSample.radiance *= skyProviderCloudShadow(surfaceInteraction.position, directionToLight);
+      }
 
       lightSample.solidAnglePdf = invSelectionPdf > 0 ? lightSample.solidAnglePdf / invSelectionPdf : 0.0;
       vec3 diffuseLight = vec3(0.0f, 0.0f, 0.0f);
@@ -1572,6 +1589,8 @@ void integrateIndirectPath(
   pathState.accumulatedHitDistance = gbufferSurfaceHitDistance;
   pathState.solidAnglePdf = asfloat(NeeCacheThreadTask[compactedCoordinate].x);
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
+  // Only the class of the first lobe is known here, so a cutout at the first bounce counts as a gather.
+  pathState.isSkyGatherPath = !geometryFlags.firstSampledLobeIsSpecular;
   // Enable nee cache for PSR reflection, which cannot be handled by ReSTIR GI.
   pathState.enableNeeCacheAfterFirstBounce =
     (geometryFlags.performPSRR || NEECache.shouldUseHigherBounceNeeCache(geometryFlags.firstSampledLobeIsSpecular, calcRoughness(firstHitPerceptualRoughness)));

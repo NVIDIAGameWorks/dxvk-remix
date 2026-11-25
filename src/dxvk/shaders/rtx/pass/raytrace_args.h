@@ -470,6 +470,10 @@ struct RaytraceArgs {
   // authored at the original size, such as subsurface radii.
   float viewModelDistanceScale;
 
+  uint skyProviderActive;
+  // Converts the pre-exposed radiance of the sky provider to the renderer's radiance.
+  float skyRadianceUnscale;
+
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
   // NOTE: bool does not work in debug builds, use uint instead.
 };

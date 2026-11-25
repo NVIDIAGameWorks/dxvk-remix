@@ -1,0 +1,334 @@
+/*
+* Copyright (c) 2026, Kim2091
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// The composite of the NUMOS sky, clouds and haze, see "Composite" in documentation/NumosSky.md.
+// NUMOS works in its pre-exposed scale, cb.skyRadianceScale, which these functions convert to and from.
+
+#include "numos/host/numos_host.slangh"
+#include "rtx/utility/sky_foreground.slangh"
+
+// Half the width of the opacity band over which a cloud's motion vector takes over from the surface's.
+static const float kCloudMotionVectorBandHalfWidth = 0.15f;
+
+// The parts of a pixel that get clouds and haze at distances of their own.
+struct SkyCompositeInput
+{
+  // The scene without the parts below and without volumetric in-scatter.
+  vec3 radiance;
+  // The PSR paths, which are each hazed at their own virtual distance.
+  vec3 primaryPathRadiance;
+  vec3 secondaryPathRadiance;
+  vec3 primaryPathWeight;
+  vec3 secondaryPathWeight;
+  float secondaryPathDistance;
+
+  SkyForeground foreground;
+  vec3 foregroundRadiance;
+
+  vec3 alphaBlendRadiance;
+  float alphaBlendDistance;
+  float backgroundAlpha;
+  bool hasAlphaBlendSurface;
+
+  // The transmittance of Remix volumetrics in front of the pixel.
+  vec3 volumeAttenuation;
+  float viewDistance;
+};
+
+struct SkyCompositeResult
+{
+  vec3 radiance;
+  vec3 alphaBlendRadiance;
+  // The opacity of the clouds over the pixel.
+  float cloudCoverage;
+};
+
+// Applies the air between the camera and `distanceWorld`, or the sky on a miss.
+void applySkyHaze(
+  uvec2 pixelCoordinate,
+  bool primaryMiss,
+  float distanceWorld,
+  vec3 throughput,
+  vec4 cloudOverPixel,
+  inout vec3 radiance)
+{
+  if (!cb.skyHazeActive)
+  {
+    return;
+  }
+
+  // Remix volumetrics are off whenever the haze runs, so nothing attenuates the air.
+  const vec3 noVolumeAttenuation = vec3(1.0f);
+  numosApplyAerialPerspective(
+    cb.camera, skyArgs, cb.skyHostOverride,
+    SkyHazeNearScatter, SkyHazeFarScatter, SkyHazeFarTransmittance, SkyHazeFroxelAux,
+    SkyHazeLights, SkyHazeLightClusters, SkyHazeSampler,
+    pixelCoordinate, primaryMiss, distanceWorld, noVolumeAttenuation, throughput, cloudOverPixel, radiance);
+}
+
+// Composites the clouds and haze over a hit pixel, whose inputs and outputs are in NUMOS's scale.
+SkyCompositeResult compositeSkyOverSurfaceInternal(uvec2 pixelCoordinate, SkyCompositeInput input)
+{
+  const bool hasPsrSurface = input.foreground.hasPsrSurface();
+  const vec3 throughput = vec3(input.foreground.attenuation);
+
+  vec3 foregroundRadiance = input.foregroundRadiance;
+  float foregroundDepthKm = 0.0f;
+  if (input.foreground.hasSeparateLayers())
+  {
+    foregroundDepthKm = input.foreground.depthKm;
+    applySkyHaze(
+      pixelCoordinate, false, numosKmToWorld(foregroundDepthKm, skyArgs), vec3(1.0f) - throughput, vec4(0.0f),
+      foregroundRadiance);
+  }
+
+  vec3 radiance = input.radiance;
+  vec3 alphaBlendRadiance = input.alphaBlendRadiance;
+  vec4 cloudOverPixel = vec4(0.0f);
+
+  // PSR pixels received their clouds while path tracing.
+  if (cb.skyCloudsValid)
+  {
+    numosApplyCloudComposite(
+      cb.camera, skyArgs, SkyCloudRender, SkyCloudDepth, SkyHazeFarScatter, SkyHazeFarTransmittance, SkyHazeSampler,
+      pixelCoordinate, false, input.viewDistance, input.backgroundAlpha, throughput,
+      radiance, alphaBlendRadiance, input.hasAlphaBlendSurface, input.alphaBlendDistance,
+      foregroundRadiance, foregroundDepthKm, hasPsrSurface, cloudOverPixel);
+
+    // The volumetrics in front attenuate the cloud's light. They cannot be part of the throughput,
+    // because NUMOS gives the rest of the throughput to the layers in front.
+    radiance -= cloudOverPixel.rgb * (vec3(1.0f) - input.volumeAttenuation);
+    cloudOverPixel.rgb *= input.volumeAttenuation;
+  }
+
+  if (hasPsrSurface)
+  {
+    // Everything that is not a replaced path ends at the PSR surface, where the air in front of the pixel ends.
+    const float psrSurfaceDistance = numosKmToWorld(-input.foreground.depthKm, skyArgs);
+    vec3 primaryPathRadiance = input.primaryPathRadiance;
+    vec3 secondaryPathRadiance = input.secondaryPathRadiance;
+
+    if (any(input.primaryPathWeight > 0.0f))
+    {
+      applySkyHaze(pixelCoordinate, false, input.viewDistance, input.primaryPathWeight, vec4(0.0f), primaryPathRadiance);
+    }
+    if (any(input.secondaryPathWeight > 0.0f))
+    {
+      applySkyHaze(
+        pixelCoordinate, false, input.secondaryPathDistance, input.secondaryPathWeight, vec4(0.0f), secondaryPathRadiance);
+    }
+    applySkyHaze(
+      pixelCoordinate, false, psrSurfaceDistance,
+      saturate(vec3(1.0f) - input.primaryPathWeight - input.secondaryPathWeight), vec4(0.0f), radiance);
+
+    radiance += primaryPathRadiance + secondaryPathRadiance;
+  }
+  else
+  {
+    applySkyHaze(pixelCoordinate, false, input.viewDistance, throughput, cloudOverPixel, radiance);
+  }
+
+  if (input.hasAlphaBlendSurface)
+  {
+    applySkyHaze(
+      pixelCoordinate, false, input.alphaBlendDistance, vec3(1.0f - input.backgroundAlpha), vec4(0.0f),
+      alphaBlendRadiance);
+  }
+
+  SkyCompositeResult result;
+  result.radiance = radiance + foregroundRadiance;
+  result.alphaBlendRadiance = alphaBlendRadiance;
+  result.cloudCoverage = cloudOverPixel.a;
+
+  return result;
+}
+
+SkyCompositeResult compositeSkyOverSurface(uvec2 pixelCoordinate, SkyCompositeInput input)
+{
+  const float scale = cb.skyRadianceScale;
+
+  SkyCompositeInput scaledInput = input;
+  scaledInput.radiance *= scale;
+  scaledInput.primaryPathRadiance *= scale;
+  scaledInput.secondaryPathRadiance *= scale;
+  scaledInput.foregroundRadiance *= scale;
+  scaledInput.alphaBlendRadiance *= scale;
+
+  SkyCompositeResult result = compositeSkyOverSurfaceInternal(pixelCoordinate, scaledInput);
+  result.radiance /= scale;
+  result.alphaBlendRadiance /= scale;
+
+  return result;
+}
+
+// Returns what the clouds and haze add to a hit pixel.
+// Every step is affine in its radiance, so running them on zero radiance leaves exactly that part.
+SkyCompositeResult compositeSkyLayerOverSurface(uvec2 pixelCoordinate, SkyCompositeInput input)
+{
+  SkyCompositeInput layerInput = input;
+  layerInput.radiance = vec3(0.0f);
+  layerInput.primaryPathRadiance = vec3(0.0f);
+  layerInput.secondaryPathRadiance = vec3(0.0f);
+  layerInput.foregroundRadiance = vec3(0.0f);
+  layerInput.alphaBlendRadiance = vec3(0.0f);
+
+  return compositeSkyOverSurface(pixelCoordinate, layerInput);
+}
+
+// Composites the clouds and haze over the sky behind a pixel, in NUMOS's scale.
+vec3 compositeOverSkyInternal(uvec2 pixelCoordinate, vec3 background, out float cloudCoverage)
+{
+  vec3 radiance = background;
+  vec3 noAlphaBlend = vec3(0.0f);
+  vec3 noForeground = vec3(0.0f);
+  vec4 cloudOverPixel = vec4(0.0f);
+
+  if (cb.skyCloudsValid)
+  {
+    numosApplyCloudComposite(
+      cb.camera, skyArgs, SkyCloudRender, SkyCloudDepth, SkyHazeFarScatter, SkyHazeFarTransmittance, SkyHazeSampler,
+      pixelCoordinate, true, 0.0f, 1.0f, vec3(1.0f),
+      radiance, noAlphaBlend, false, 0.0f, noForeground, 0.0f, false, cloudOverPixel);
+  }
+  applySkyHaze(pixelCoordinate, true, 0.0f, vec3(1.0f), cloudOverPixel, radiance);
+
+  cloudCoverage = cloudOverPixel.a;
+
+  return radiance;
+}
+
+// Returns the sky along a camera ray with its disks, clouds and haze.
+// A dome light replaces the sky behind the clouds.
+vec3 compositePrimarySky(uvec2 pixelCoordinate, vec3 direction, vec3 domeLightRadiance, out float cloudCoverage)
+{
+  vec3 background;
+  if (cb.skyHostOverride)
+  {
+    background = domeLightRadiance * cb.skyRadianceScale;
+  }
+  else
+  {
+    const bool isPrimaryRay = true;
+    const bool applySkyIndirectScale = false;
+    background = evalSkyRadiance(
+      direction, skyArgs, pixelCoordinate, cb.frameIdx, skyArgs.isZUp, isPrimaryRay, applySkyIndirectScale,
+      NUMOS_SKY_DISKS_NONE);
+    // The clouds cover the disks by their own transmittance, so the disks go in before them.
+    background += numosSkyDisks(direction, skyArgs, skyArgs.isZUp);
+  }
+
+  return compositeOverSkyInternal(pixelCoordinate, background, cloudCoverage) / cb.skyRadianceScale;
+}
+
+// Returns what the clouds and haze add to the sky.
+vec3 compositeSkyLayerOverSky(uvec2 pixelCoordinate)
+{
+  float cloudCoverage;
+  return compositeOverSkyInternal(pixelCoordinate, vec3(0.0f), cloudCoverage) / cb.skyRadianceScale;
+}
+
+// Returns the opacity of the clouds at a pixel that gets no sky, such as an inactive sparse miss.
+float getSkyCloudCoverage(uvec2 pixelCoordinate)
+{
+  if (!cb.skyCloudsValid)
+  {
+    return 0.0f;
+  }
+
+  return 1.0f - SkyCloudRender.Load(ivec3(pixelCoordinate, 0)).a;
+}
+
+// Gives a pixel the depth and screen space motion vector of the cloud over it, as upscalers take one layer per pixel.
+// The depth switches in the middle of the band, because a blended depth would describe no surface.
+void applyCloudMotionVectors(uvec2 pixelCoordinate, float cloudCoverage)
+{
+  if (!cb.cloudMotionVectors || cloudCoverage <= 0.0f)
+  {
+    return;
+  }
+
+  // The entry and mean distance are in km, and the entry is negative where the ray met no cloud.
+  const vec2 depthKm = SkyCloudDepth.Load(ivec3(pixelCoordinate, 0)).xy;
+  if (depthKm.x < 0.0f || depthKm.y <= 0.0f)
+  {
+    return;
+  }
+
+  const float threshold = cb.cloudMotionVectorCoverage;
+  const float weight = smoothstep(
+    threshold - kCloudMotionVectorBandHalfWidth, threshold + kCloudMotionVectorBandHalfWidth, cloudCoverage);
+  if (weight <= 0.0f)
+  {
+    return;
+  }
+
+  // The G-buffer projects primary hits the same way: an unjittered ray, jittered depth and unjittered motion.
+  const float distanceWorld = numosKmToWorld(depthKm.y, skyArgs);
+  const vec3 direction = cameraPixelCoordinateToDirection(cb.camera, pixelCoordinate, false).worldDirection;
+  const vec3 cloudPosition = cameraGetWorldPosition(cb.camera) + direction * distanceWorld;
+
+  // A cloud past the far plane takes the depth of the sky. A miss depth below 0.5 means reversed depth.
+  const float missDepth = cb.skyMissDepth;
+  const vec4 clipPosition = mul(cb.camera.worldToProjectionJittered, vec4(cloudPosition, 1.0f));
+  const float projectedDepth = clipPosition.z / clipPosition.w;
+  const float cloudDepth = missDepth >= 0.5f ? min(projectedDepth, missDepth) : max(projectedDepth, missDepth);
+
+  const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
+  const vec2 cloudMotion = cameraCalcMotionVectorPixel(cb.camera, ndc, cameraWorldPosToPrevNDC(cb.camera, cloudPosition));
+
+  const bool cloudDominates = weight >= 0.5f;
+  PrimaryScreenSpaceMotionVector[pixelCoordinate] = lerp(PrimaryScreenSpaceMotionVector[pixelCoordinate], cloudMotion, weight);
+  if (cloudDominates)
+  {
+    PrimaryDepth[pixelCoordinate] = cloudDepth;
+  }
+
+  if (cb.useRayReconstruction)
+  {
+    PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] =
+      lerp(PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate], cloudMotion, weight);
+    if (cloudDominates)
+    {
+      PrimaryDepthDLSSRR[pixelCoordinate] = cloudDepth;
+    }
+  }
+}
+
+// Writes the share of the pixel that the clouds and haze add into the upscaler's mask.
+// They move with the wind rather than with the surface motion vectors, so that share favors the current frame.
+void writeSkyBiasMask(uvec2 pixelCoordinate, vec3 finalRadiance, vec3 skyLayer)
+{
+  if (!cb.skyWriteBiasMask)
+  {
+    return;
+  }
+
+  const float totalLuminance = calcBt709Luminance(max(finalRadiance, vec3(0.0f)));
+  const float layerShare = totalLuminance > 0.0f
+    ? saturate(calcBt709Luminance(max(skyLayer, vec3(0.0f))) / totalLuminance)
+    : 0.0f;
+  const float unorderedEmissive = cb.skyBiasMaskKeepUnorderedEmissive
+    ? BiasCurrentColorMask[pixelCoordinate]
+    : 0.0f;
+  BiasCurrentColorMask[pixelCoordinate] = max(unorderedEmissive, layerShare);
+}

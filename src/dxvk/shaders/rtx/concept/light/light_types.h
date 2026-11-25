@@ -32,4 +32,7 @@ static const uint lightTypeInvalid = lightTypeMask;
 
 static const uint lightTypeCount = 5;
 
+// This bit of a distant light's flag data marks it as shadowed by the sky provider's clouds.
+static const uint lightFlagCloudShadowed = 1u << 2;
+
 #endif // LIGHT_TYPES_H

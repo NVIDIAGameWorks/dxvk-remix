@@ -70,10 +70,44 @@
 #define COMPOSITE_PRIMARY_SURFACE_FLAGS_INPUT                       32
 #define COMPOSITE_SKY_PROBE_TEXTURE                                 33
 
+// These are bound only by the sky provider variant of the composite, and number from 70.
+#define COMPOSITE_SKY_FOREGROUND_INPUT                              70
+#define COMPOSITE_SKY_SECONDARY_HIT_DISTANCE_INPUT                  71
+#define COMPOSITE_SKY_ARGS_INPUT                                    72
+#define COMPOSITE_SKY_CLOUD_RENDER_INPUT                            73
+#define COMPOSITE_SKY_CLOUD_DEPTH_INPUT                             74
+#define COMPOSITE_SKY_HAZE_NEAR_SCATTER_INPUT                       75
+#define COMPOSITE_SKY_HAZE_FAR_SCATTER_INPUT                        76
+#define COMPOSITE_SKY_HAZE_FAR_TRANSMITTANCE_INPUT                  77
+#define COMPOSITE_SKY_HAZE_FROXEL_AUX_INPUT                         78
+#define COMPOSITE_SKY_HAZE_LIGHTS_INPUT                             79
+#define COMPOSITE_SKY_HAZE_LIGHT_CLUSTERS_INPUT                     80
+#define COMPOSITE_SKY_HAZE_SAMPLER_INPUT                            81
+#define COMPOSITE_SKY_TRANSMITTANCE_LUT_INPUT                       82
+#define COMPOSITE_SKY_MULTISCATTERING_LUT_INPUT                     83
+#define COMPOSITE_SKY_VIEW_LUT_INPUT                                84
+#define COMPOSITE_SKY_VIEW_SAMPLER_INPUT                            85
+#define COMPOSITE_SKY_CLOUD_TRANSMITTANCE_LUT_INPUT                 86
+#define COMPOSITE_SKY_CLOUD_SHADOW_MAP_INPUT                        87
+#define COMPOSITE_SKY_CLOUD_NOISE_SAMPLER_INPUT                     88
+#define COMPOSITE_SKY_CLOUD_SECONDARY_LUT_INPUT                     89
+#define COMPOSITE_SKY_STAR_CELLS_INPUT                              90
+#define COMPOSITE_SKY_STARS_INPUT                                   91
+#define COMPOSITE_SKY_MILKY_WAY_INPUT                               92
+#define COMPOSITE_SKY_STARLIGHT_LOW_INPUT                           93
+#define COMPOSITE_SKY_MOON_INPUT                                    94
+
 // Inputs/Outputs
 
 #define COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT                       40
 #define COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT             41
+
+// These are bound only by the sky provider variant of the composite.
+#define COMPOSITE_SKY_BIAS_MASK_INPUT_OUTPUT                        42
+#define COMPOSITE_SKY_DEPTH_INPUT_OUTPUT                            43
+#define COMPOSITE_SKY_MOTION_VECTOR_INPUT_OUTPUT                    44
+#define COMPOSITE_SKY_DEPTH_DLSSRR_INPUT_OUTPUT                     45
+#define COMPOSITE_SKY_MOTION_VECTOR_DLSSRR_INPUT_OUTPUT             46
 
 // Outputs
 
