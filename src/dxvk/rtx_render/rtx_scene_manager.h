@@ -375,6 +375,25 @@ private:
       const DrawCallState& input,
       const AssetReplacement& replacement);
 
+  // rtx.skinnedReplacementsInHostMemory: a skinned replacement whose vertices are in host memory skins from a VRAM copy of them.
+  // A drawn replacement registers its host VB and a BLAS build/refit acquires the copy for the vertex copy and skinning
+  // Meshes that share a host VB share its copy
+  // Cached draw state keeps the host vertices so dropping the copy frees it
+  void registerSkinnedHostVertices(const DrawCallState& state);
+  // Returns the geometry with its vertex attributes in the device mem copy
+  // Returns nullptr when the verts are not registered or the copy allocation fails
+  std::shared_ptr<const RasterGeometry> acquireSkinnedVramGeometry(const Rc<DxvkContext>& ctx, const DrawCallState& state);
+  struct SkinnedVramCopy {
+    Rc<DxvkBuffer> host;  // Keeps the key alive
+    Rc<DxvkBuffer> vram;
+    uint32_t lastUsedFrame = 0;
+
+    // Retry failed device memory allocations
+    uint32_t retryFrame = 0;
+    uint32_t failedAllocations = 0;
+  };
+  std::unordered_map<const DxvkBuffer*, SkinnedVramCopy> m_skinnedVramCopies;
+
   // Minimal per-frame work for the preserve path (unchanged / anti-culled draws).
   // When pInput is set (preserve replacement draw path), also runs the ray-portal refresh
   // via processRayPortalData on the cached RtSurfaceMaterial.

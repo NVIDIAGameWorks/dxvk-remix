@@ -380,6 +380,9 @@ namespace dxvk {
     // (this function could be debug only, but this isn't a hot path.) 
     verifyAndReleaseBufferCache();
 
+    // rtx.skinnedReplacementsInHostMemory: the VRAM copies of skinned meshes go with the scene
+    m_skinnedVramCopies.clear();
+
     // We still need to clear caches even if the scene wasn't rendered
     m_bindlessResourceManager.releaseBufferDescriptors(ctx, needWfi);
     m_bufferCache.clear();
@@ -622,6 +625,11 @@ namespace dxvk {
       ? input.positionBuffer.stride()
       : RtxGeometryUtils::computeOptimalVertexStride(input, forceNormals);
 
+    // Copy VB from device mem copy if it exists
+    const bool copiesVertices = result == ObjectCacheState::KBuildBVH || result == ObjectCacheState::kUpdateBVH;
+    const std::shared_ptr<const RasterGeometry> vramGeometry = copiesVertices ? acquireSkinnedVramGeometry(ctx, drawCallState) : nullptr;
+    const RasterGeometry& vertexSource = vramGeometry != nullptr ? *vramGeometry : input;
+
     switch (result) {
       case ObjectCacheState::KBuildBVH: {
         // Set up the ideal vertex params, if input vertices are interleaved, it's safe to assume the positionBuffer stride is the vertex stride
@@ -656,7 +664,7 @@ namespace dxvk {
         info.size = align(vertexBufferSize, CACHE_LINE_SIZE);
         output.historyBuffer[0] = m_device->createBuffer(info, memoryProperty, DxvkMemoryStats::Category::RTXAccelerationStructure, "Geometry Buffer");
 
-        RtxGeometryUtils::cacheVertexDataOnGPU(ctx, input, output, forceNormals);
+        RtxGeometryUtils::cacheVertexDataOnGPU(ctx, vertexSource, output, forceNormals);
 
         break;
       }
@@ -684,7 +692,7 @@ namespace dxvk {
           output.historyBuffer[0] = m_device->createBuffer(output.historyBuffer[1]->info(), memoryProperty, DxvkMemoryStats::Category::RTXAccelerationStructure, "Geometry Buffer");
         } 
 
-        RtxGeometryUtils::cacheVertexDataOnGPU(ctx, input, output, forceNormals);
+        RtxGeometryUtils::cacheVertexDataOnGPU(ctx, vertexSource, output, forceNormals);
 
         // Sometimes, we need to invalidate history, do that here by copying the current buffer to the previous..
         if (invalidateHistory) {
@@ -739,6 +747,11 @@ namespace dxvk {
         m_device->getCommon()->getTextureManager().getTextureCacheGeneration();
 
     manageTextureVram();
+
+    // rtx.skinnedReplacementsInHostMemory: drop the device mem copies that haven't been used by a BLAS build/refit for >= 300 frames
+    for (auto it = m_skinnedVramCopies.begin(); it != m_skinnedVramCopies.end();) {
+      it = m_device->getCurrentFrameId() - it->second.lastUsedFrame > 300 ? m_skinnedVramCopies.erase(it) : std::next(it);
+    }
 
     // Update graphs before applying any hot-reload: invalidateChangedReplacements runs
     // below and marks GraphInstances for GC in the same frame-end, but garbageCollection
@@ -1164,6 +1177,92 @@ namespace dxvk {
     return std::nullopt;
   }
 
+  // Returns the VB of a skinned mesh that has vertices in host memory
+  // Returns nullptr for any other draw.
+  static DxvkBuffer* getSkinnedHostVertices(const DrawCallState& state) {
+    const RasterGeometry& source = state.getGeometryData();
+    DxvkBuffer* host = source.positionBuffer.buffer().ptr();
+    if (state.getSkinningState().numBones == 0 || !source.blendWeightBuffer.defined() || host == nullptr || host->mapPtr(0) == nullptr) {
+      return nullptr;
+    }
+    return host;
+  }
+
+  void SceneManager::registerSkinnedHostVertices(const DrawCallState& state) {
+    DxvkBuffer* host = getSkinnedHostVertices(state);
+    if (host == nullptr) {
+      return;
+    }
+
+    // device local templates don't need a copy
+    if (host->getBufferHandle().memory.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+      return;
+    }
+
+    // Mark new entries as used this frame
+    auto [it, inserted] = m_skinnedVramCopies.try_emplace(host);
+    if (inserted) {
+      it->second.host = host;
+      it->second.lastUsedFrame = m_device->getCurrentFrameId();
+    }
+  }
+
+  std::shared_ptr<const RasterGeometry> SceneManager::acquireSkinnedVramGeometry(const Rc<DxvkContext>& ctx, const DrawCallState& state) {
+    DxvkBuffer* host = getSkinnedHostVertices(state);
+    if (host == nullptr) {
+      return nullptr;
+    }
+    auto it = m_skinnedVramCopies.find(host);
+    if (it == m_skinnedVramCopies.end()) {
+      return nullptr;
+    }
+
+    const uint32_t frame = m_device->getCurrentFrameId();
+    SkinnedVramCopy& copy = it->second;
+    copy.lastUsedFrame = frame;
+    if (copy.vram == nullptr) {
+      if (int32_t(copy.retryFrame - frame) > 0) {
+        return nullptr;
+      }
+
+      // try to allocate device memory
+      try {
+        copy.vram = m_device->createBuffer(host->info(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXReplacementGeometry, "Skinned Mesh VRAM Copy");
+      } catch (const DxvkError&) {
+        copy.vram = nullptr;
+      }
+
+      // Device memory allocation failure falls back to the allocator placing the copy in host memory
+      if (copy.vram != nullptr && (copy.vram->getBufferHandle().memory.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0) {
+        copy.vram = nullptr;
+      }
+
+      // Keep doubling the retry
+      if (copy.vram == nullptr) {
+        copy.retryFrame = frame + (60u << std::min(copy.failedAllocations, 6u));
+        ++copy.failedAllocations;
+        ONCE(Logger::warn("[RTX] A skinned replacement mesh could not allocate a device local copy of its vertices so skinning reads from host memory."));
+        return nullptr;
+      }
+      copy.failedAllocations = 0;
+
+      ctx->copyBuffer(copy.vram, 0, host, 0, host->info().size);
+      // Skinning reads the copy on its own context, which RtxContext::flushCommandList submits after this one
+      ctx->emitMemoryBarrier(0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT);
+    }
+
+    auto geometry = std::make_shared<RasterGeometry>(state.getGeometryData());
+    for (RasterBuffer* attribute : { &geometry->positionBuffer, &geometry->normalBuffer, &geometry->texcoordBuffer,
+                                     &geometry->color0Buffer, &geometry->blendWeightBuffer, &geometry->blendIndicesBuffer }) {
+      if (attribute->buffer().ptr() == host) {
+        *attribute = RasterBuffer(DxvkBufferSlice(copy.vram, attribute->offset(), attribute->length()),
+                                  attribute->offsetFromSlice(), attribute->stride(), attribute->vertexFormat());
+      }
+    }
+    return geometry;
+  }
+
   void SceneManager::drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::shared_ptr<const ReplacementBucket>& pReplacements, MaterialData& renderMaterialData, ReplacementInstance* replacementInstance) {
     ScopedCpuProfileZone();
     if (pReplacements == nullptr) {
@@ -1186,6 +1285,10 @@ namespace dxvk {
 
       std::optional<DrawCallState> newDrawCallState = SceneManager::buildReplacementMeshDrawCallState(*input, replacement);
       if (newDrawCallState.has_value()) {
+        if (!replacement.includeOriginal) {
+          registerSkinnedHostVertices(*newDrawCallState);
+        }
+
         // Note: Material Data replaced if a replacement is specified in the Mesh Replacement.
         // Only meaningful when geometry is replaced (eMesh); the includeOriginal branch keeps the
         // game's original material data.
@@ -1774,7 +1877,15 @@ namespace dxvk {
         drawCallState.getGeometryData().numBonesPerVertex > 0 &&
         drawCallState.getGeometryData().blendWeightBuffer.defined() &&
         (result == ObjectCacheState::KBuildBVH || result == ObjectCacheState::kUpdateBVH)) {
-      m_device->getCommon()->metaGeometryUtils().dispatchSkinning(drawCallState, pBlas->modifiedGeometryData);
+      // Skinned replacement uses its device memory copy and the cached draw state keeps its host verts
+      const std::shared_ptr<const RasterGeometry> vramGeometry = acquireSkinnedVramGeometry(ctx, drawCallState);
+      if (vramGeometry != nullptr) {
+        DrawCallState skinningState = drawCallState;
+        skinningState.overrideGeometryData(vramGeometry);
+        m_device->getCommon()->metaGeometryUtils().dispatchSkinning(skinningState, pBlas->modifiedGeometryData);
+      } else {
+        m_device->getCommon()->metaGeometryUtils().dispatchSkinning(drawCallState, pBlas->modifiedGeometryData);
+      }
       pBlas->frameLastUpdated = pBlas->frameLastTouched;
       m_instanceManager.notifySceneChanged();
     }

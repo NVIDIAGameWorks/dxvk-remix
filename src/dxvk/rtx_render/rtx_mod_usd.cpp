@@ -2707,9 +2707,10 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
     processedMesh->CopyVertexData(vertexBuffer_staging->mapPtr(0), vertexDataSize);
   }
 
-  // Dynamic meshes should have their vertex data in device memory, static meshes should reside in host memory and allow geometry streaming to handle host/device memory management
+  // Dynamic meshes should have their vertex data in device memory, static meshes should reside in host memory and allow geometry streaming to handle host/device memory management.
+  // rtx.skinnedReplacementsInHostMemory: dynamic meshes stay in host memory too. BLAS builds/refits skin them from a device mem copy (SceneManager::acquireSkinnedVramGeometry).
   Rc<DxvkBuffer> vertexBuffer;
-  if (isDynamicMesh) {
+  if (isDynamicMesh && !RtxOptions::skinnedReplacementsInHostMemory()) {
     vertexBuffer = args.context->getDevice()->createBuffer(
         info,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -2793,23 +2794,11 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
       const size_t indexDataSize = submesh.GetNumIndices() * sizeof(uint32_t);
       info.size = dxvk::align(indexDataSize, CACHE_LINE_SIZE);
 
-      // Buffer contains: indices
-      Rc<DxvkBuffer> indexBuffer_staging = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXReplacementGeometry, "Mesh index buffer staging");
+      // Buffer contains: indices.
+      // They stay in host memory, also for skinned meshes: the GPU reads them only for the ray tracing copy of a new BLAS entry.
+      Rc<DxvkBuffer> indexBuffer = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXReplacementGeometry, "Mesh index buffer staging");
       if (!doAsyncUpdate) {
-        processedMesh->CopySubmeshIndexData(n, indexBuffer_staging->mapPtr(0), indexDataSize);
-      }
-      Rc<DxvkBuffer> indexBuffer;
-      if (isDynamicMesh) {
-        indexBuffer = args.context->getDevice()->createBuffer(
-          info,
-          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-          DxvkMemoryStats::Category::RTXReplacementGeometry, submesh.prim.GetName().GetString().c_str());
-        if (!doAsyncUpdate) {
-          args.context->copyBuffer(indexBuffer, 0, indexBuffer_staging, 0, indexDataSize);
-          m_lastDeviceLocalUpload = indexBuffer;
-        }
-      } else {
-        indexBuffer = indexBuffer_staging;
+        processedMesh->CopySubmeshIndexData(n, indexBuffer->mapPtr(0), indexDataSize);
       }
 
       // Schedule async update

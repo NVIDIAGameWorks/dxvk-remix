@@ -347,6 +347,12 @@ namespace dxvk {
       const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { params.numVertices, 1, 1 }, VkExtent3D { 128, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb.buffer());
+
+      // Bind empty resources to these bind points so device mem can be freed
+      ctx->bindResourceBuffer(BINDING_POSITION_INPUT, {});
+      ctx->bindResourceBuffer(BINDING_NORMAL_INPUT, {});
+      ctx->bindResourceBuffer(BINDING_BLEND_WEIGHT_INPUT, {});
+      ctx->bindResourceBuffer(BINDING_BLEND_INDICES_INPUT, {});
     } else {
       const float* srcPosition = reinterpret_cast<float*>(drawCallState.getGeometryData().positionBuffer.mapPtr(0));
       const float* srcNormal = reinterpret_cast<float*>(drawCallState.getGeometryData().normalBuffer.mapPtr(0));
@@ -366,7 +372,8 @@ namespace dxvk {
         skinning(idx, &dstPosition[0], &dstNormal[0], srcPosition, srcBlendWeight, srcBlendIndices, srcNormal, params);
 
         ctx->writeToBuffer(geo.positionBuffer.buffer(), geo.positionBuffer.offsetFromSlice() + idx * geo.positionBuffer.stride(), sizeof(dstPosition), &dstPosition[0]);
-        ctx->writeToBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0]);
+        const size_t normalSize = params.useOctahedralNormals ? sizeof(dstNormal[0]) : sizeof(dstNormal);
+        ctx->writeToBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), normalSize, &dstNormal[0]);
       }
     }
     ++m_skinningCommands;

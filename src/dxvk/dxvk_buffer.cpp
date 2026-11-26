@@ -231,14 +231,19 @@ namespace dxvk {
     if (DxvkBarrierSet::getAccessTypes(m_info.access) == DxvkAccess::Read)
       hints.set(DxvkMemoryFlag::Transient);
 
-    // Ask driver whether we should be using a dedicated allocation
-    handle.memory = m_memAlloc->alloc(&memReq.memoryRequirements,
-      dedicatedRequirements, dedMemoryAllocInfo, m_memFlags, hints, category);
-    
-    if (vkd->vkBindBufferMemory(vkd->device(), handle.buffer,
-        handle.memory.memory(), handle.memory.offset()) != VK_SUCCESS)
-      throw DxvkError("DxvkBuffer: Failed to bind device memory");
-    
+    // NV-DXVK start: Destroy the buffer when its memory cannot be allocated
+    try {
+      handle.memory = m_memAlloc->alloc(&memReq.memoryRequirements, dedicatedRequirements, dedMemoryAllocInfo, m_memFlags, hints, category);
+
+      if (vkd->vkBindBufferMemory(vkd->device(), handle.buffer, handle.memory.memory(), handle.memory.offset()) != VK_SUCCESS) {
+        throw DxvkError("DxvkBuffer: Failed to bind device memory");
+      }
+    } catch (...) {
+      vkd->vkDestroyBuffer(vkd->device(), handle.buffer, nullptr);
+      throw;
+    }
+    // NV-DXVK end
+
     return handle;
   }
 
