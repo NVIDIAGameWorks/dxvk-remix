@@ -27,7 +27,10 @@
 #include <d3d9.h>
 #include "util_gdi.h"
 
+#include <mutex>
 #include <queue>
+#include <unordered_map>
+#include <unordered_set>
 
 /*
  * IDirect3DSurface9 LSS Interceptor Class
@@ -48,10 +51,29 @@ class Direct3DSurface9_LSS: public Direct3DResource9_LSS<IDirect3DSurface9> {
   };
   std::queue<LockInfo> m_lockInfoQueue;
 
-  std::unique_ptr<uint8_t[]> m_shadow;
+  std::unique_ptr<uint8_t[], ClientCopyDeleter> m_shadow;
   inline static size_t g_totalSurfaceShadow = 0;
 
+  // MANAGED surfaces whose copy may be freed while idle (client.freeIdleManagedCopiesSec).
+  // A freed copy is fetched back from the server on the next lock.
+  // Lock order: the device lock, then s_idleCopiesLock.
+  uint64_t m_lastLockMs = 0;
+  uint32_t m_freedCrc = 0;
+  bool m_copyFreed = false;
+  inline static std::mutex s_idleCopiesLock;
+  inline static std::unordered_set<Direct3DSurface9_LSS*> s_idleCopies;
+  // The time of each device's last pass, guarded by s_idleCopiesLock.
+  inline static std::unordered_map<const BaseDirect3DDevice9Ex_LSS*, uint64_t> s_lastPassMs;
+
+  bool freesIdleCopy() const {
+    return m_desc.Pool == D3DPOOL_MANAGED && ClientOptions::getFreeIdleManagedCopiesMs();
+  }
+  bool fetchCopy(size_t surfaceSize);
+
 public:
+  // Frees the copies of pDevice's MANAGED surfaces that were not locked for idleMs. Call under pDevice's lock.
+  static void freeIdleCopies(uint32_t idleMs, const BaseDirect3DDevice9Ex_LSS* pDevice);
+
   Direct3DSurface9_LSS(BaseDirect3DDevice9Ex_LSS* const pDevice,
                        const D3DSURFACE_DESC& desc, 
                        bool isBackBuffer = false);

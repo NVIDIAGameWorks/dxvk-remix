@@ -890,6 +890,7 @@ namespace Commands {
     DataIsReserved   = 0b00000010,  // Data was already reserved in data queue and only its
                                     // offset is transferred
     AsyncResult      = 0b00000100,  // The result goes to a shared slot instead of a response
+    ReturnData       = 0b00001000,  // A buffer Lock is answered with the buffer's bytes
   };
 
   inline bool IsAsyncResult(Flags flags) {
@@ -902,6 +903,10 @@ namespace Commands {
 
   inline bool IsDataReserved(Flags flags) {
     return (flags & FlagBits::DataIsReserved) != 0;
+  }
+
+  inline bool IsReturnData(Flags flags) {
+    return (flags & FlagBits::ReturnData) != 0;
   }
 
   // These setters take no flags and only change device state, so they may travel in a Bridge_StatePacket.

@@ -31,6 +31,7 @@ class Direct3DSwapChain9_LSS: public Direct3DContainer9_LSS<D3DBase<IDirect3DSwa
   HMONITOR m_monitor = nullptr;
   HWND m_window = nullptr;
   void onDestroy() override;
+  void freeIdleCopies();
   DWORD m_behaviorFlag;
 public:
   Direct3DSwapChain9_LSS(BaseDirect3DDevice9Ex_LSS* const pDevice,

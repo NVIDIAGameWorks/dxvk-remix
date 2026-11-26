@@ -75,6 +75,23 @@ namespace ClientOptions {
     return bridge_util::Config::getOption<bool>("client.enableDpiAwareness", true);
   }
 
+  // Returns the time in milliseconds after which an unlocked MANAGED surface's client-side copy is freed.
+  // Returns 0 when copies are never freed. The value is read once so that it stays the same for every surface.
+  inline uint32_t getFreeIdleManagedCopiesMs() {
+    static const uint32_t ms = [] {
+      const uint32_t value = bridge_util::Config::getOption<uint32_t>("client.freeIdleManagedCopiesMs", 0);
+      return value ? value : bridge_util::Config::getOption<uint32_t>("client.freeIdleManagedCopiesSec", 0) * 1000;
+    }();
+    return ms;
+  }
+
+  // Returns the time in milliseconds after which an unlocked static buffer's client-side copy is freed.
+  // Returns 0 when copies are never freed. The value is read once so that it stays the same for every buffer.
+  inline uint32_t getFreeIdleBufferCopiesMs() {
+    static const uint32_t ms = bridge_util::Config::getOption<uint32_t>("client.freeIdleBufferCopiesSec", 0) * 1000;
+    return ms;
+  }
+
   // If set, the space for data for dynamic buffer updates will be preallocated on data channel
   // and redundant copy will be avioded. However, because D3D applications are not obliged
   // to write the entire locked region this optimization is NOT considered safe and may

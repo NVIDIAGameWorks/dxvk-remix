@@ -42,6 +42,11 @@ Direct3DSurface9_LSS::Direct3DSurface9_LSS(BaseDirect3DDevice9Ex_LSS* const pDev
 }
 
 Direct3DSurface9_LSS::~Direct3DSurface9_LSS() {
+  // Erased first, so that a running freeIdleCopies() pass can no longer reach the surface.
+  if (freesIdleCopy()) {
+    std::lock_guard<std::mutex> lock(s_idleCopiesLock);
+    s_idleCopies.erase(this);
+  }
   if (m_bUseSharedHeap) {
     if (m_bufferId != SharedHeap::kInvalidId) {
       SharedHeap::deallocate(m_bufferId);
@@ -55,6 +60,67 @@ Direct3DSurface9_LSS::~Direct3DSurface9_LSS() {
                                 "(size: %zd, total surface shadow size: %zd)",
                                 this, surfaceSize, g_totalSurfaceShadow));
   }
+}
+
+void Direct3DSurface9_LSS::freeIdleCopies(const uint32_t idleMs, const BaseDirect3DDevice9Ex_LSS* const pDevice) {
+  const uint64_t nowMs = GetTickCount64();
+  std::lock_guard<std::mutex> lock(s_idleCopiesLock);
+  if (!isIdlePassDue(s_lastPassMs[pDevice], nowMs, idleMs)) {
+    return;
+  }
+  for (auto it = s_idleCopies.begin(); it != s_idleCopies.end();) {
+    Direct3DSurface9_LSS* const pSurface = *it;
+    // Only the presenting device's own surfaces: the device lock does not serialize two devices that were
+    // created without D3DCREATE_MULTITHREADED, so another device may be inside a lock of its own surface.
+    if (pSurface->m_pDevice == pDevice &&
+        pSurface->m_lockInfoQueue.empty() && nowMs - pSurface->m_lastLockMs >= idleMs) {
+      const size_t surfaceSize =
+        bridge_util::calcTotalSizeOfRect(pSurface->m_desc.Width, pSurface->m_desc.Height, pSurface->m_desc.Format);
+      pSurface->m_freedCrc = calcCrc32c(pSurface->m_shadow.get(), surfaceSize);
+      pSurface->m_shadow.reset();
+      pSurface->m_copyFreed = true;
+      g_totalSurfaceShadow -= surfaceSize;
+      it = s_idleCopies.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+// Returns false when the server sent no whole surface.
+// The server answers IDirect3DSurface9_LockRect with ReturnSurfaceDataToClient, whose rows are packed like m_shadow.
+bool Direct3DSurface9_LSS::fetchCopy(const size_t surfaceSize) {
+  UID uid = 0;
+  {
+    ClientMessage c(Commands::IDirect3DSurface9_LockRect, getId());
+    uid = c.get_uid();
+  }
+  if (Result::Success != DeviceBridge::waitForCommand(Commands::Bridge_Response, GlobalOptions::getAckTimeout(), nullptr, true, uid)) {
+    Logger::err(format_string("Fetching the freed copy of surface [%p] failed: no response from server.", this));
+    return false;
+  }
+  bool whole = false;
+  const HRESULT hr = (HRESULT) DeviceBridge::get_data();
+  size_t pulledSize = 0;
+  if (SUCCEEDED(hr)) {
+    DeviceBridge::get_data(); // Width
+    DeviceBridge::get_data(); // Height
+    DeviceBridge::get_data(); // Format
+    void* pData = nullptr;
+    pulledSize = DeviceBridge::get_data(&pData);
+    whole = pulledSize >= surfaceSize;
+    if (whole) {
+      memcpy(m_shadow.get(), pData, surfaceSize);
+      if (calcCrc32c(m_shadow.get(), surfaceSize) != m_freedCrc) {
+        ONCE(Logger::warn("A fetched surface copy differs from the freed one. The server's bytes are kept."));
+      }
+    }
+  }
+  if (!whole) {
+    Logger::err(format_string("Fetching the freed copy of surface [%p] failed: hr 0x%08x, %zu of %zu bytes.", this, hr, pulledSize, surfaceSize));
+  }
+  DeviceBridge::consumeResponse();
+  return whole;
 }
 
 HRESULT Direct3DSurface9_LSS::QueryInterface(REFIID riid, LPVOID* ppvObj) {
@@ -221,11 +287,34 @@ bool Direct3DSurface9_LSS::lock(D3DLOCKED_RECT& lockedRect, const RECT* pRect, c
     m_lockInfoQueue.push({ lockedRect, rect, flags, m_bufferId, discardBufId });
   } else {
     if (!m_shadow) {
-      m_shadow.reset(new uint8_t[surfaceSize]);
+      uint8_t* pCopy = nullptr;
+      if (isIdleCopySize(surfaceSize) && freesIdleCopy()) {
+        pCopy = static_cast<uint8_t*>(VirtualAlloc(nullptr, surfaceSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+      }
+      m_shadow.get_deleter().virtualAlloc = pCopy != nullptr;
+      m_shadow.reset(pCopy != nullptr ? pCopy : new uint8_t[surfaceSize]);
+
+      // MANAGED ignores D3DLOCK_DISCARD, so a freed copy is always fetched whole.
+      // The lock fails when the fetch does, so that Unlock cannot upload stale bytes over the server's.
+      if (m_copyFreed) {
+        if (!fetchCopy(surfaceSize)) {
+          m_shadow.reset();
+          return false;
+        }
+        m_copyFreed = false;
+      }
+      if (pCopy != nullptr) {
+        std::lock_guard<std::mutex> lock(s_idleCopiesLock);
+        s_idleCopies.insert(this);
+      }
+
       g_totalSurfaceShadow += surfaceSize;
       Logger::trace(format_string("Allocated a shadow for surface [%p] "
                                   "(size: %zd, total surface shadow size: %zd)",
                                   this, surfaceSize, g_totalSurfaceShadow));
+    }
+    if (m_shadow.get_deleter().virtualAlloc) {
+      m_lastLockMs = GetTickCount64();
     }
 
     const size_t byteOffset = bridge_util::calcImageByteOffset(lockedRect.Pitch, rect, m_desc.Format);
