@@ -2331,6 +2331,7 @@ namespace dxvk {
         RemixGui::Checkbox("Detect texture-generation draw call as Eye", &RtxOptions::Eye::assumeViewTexgenModeAsEyeObject());
         RemixGui::DragFloat("Eye Whites Albedo Scale", &RtxOptions::Eye::eyeWhitesAlbedoScaleObject(), 0.01F);
         RemixGui::DragFloat("Roughness", &RtxOptions::Eye::roughnessObject(), 0.01F, 0.F, 1.F);
+        RemixGui::DragFloat("Base Reflectivity", &RtxOptions::Eye::baseReflectivityObject(), 0.001F, 0.04F, 0.2F);
         RemixGui::DragFloat("Normals: Eyeball Offset", &RtxOptions::Eye::eyeballSphereOffsetObject(), 0.001F);
         RemixGui::DragFloat("Normals: Cornea Offset", &RtxOptions::Eye::corneaSphereOffsetObject(), 0.001F);
         RemixGui::DragFloat("Iris Radius", &RtxOptions::Eye::irisRadiusObject(), 0.001F);

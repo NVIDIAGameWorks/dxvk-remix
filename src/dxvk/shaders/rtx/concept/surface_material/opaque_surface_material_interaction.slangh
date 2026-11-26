@@ -528,7 +528,7 @@ void overrideMaterialInteractionForEye(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness
   );
   opaqueSurfaceMaterialInteraction.albedo           = albedoToAdjustedAlbedo(eyeAlbedo, eyeMetallic, eyeOpacity);
-  opaqueSurfaceMaterialInteraction.baseReflectivity = calcBaseReflectivity(eyeAlbedo, eyeMetallic, eyeOpacity);
+  opaqueSurfaceMaterialInteraction.baseReflectivity = vec3(cb.eyeArgs.baseReflectivity) * eyeOpacity;
   opaqueSurfaceMaterialInteraction.opacity          = eyeOpacity;
 
   opaqueSurfaceMaterialInteraction.emissiveRadiance =

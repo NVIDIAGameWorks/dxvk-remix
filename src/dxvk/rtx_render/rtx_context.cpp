@@ -1571,6 +1571,7 @@ namespace dxvk {
     constants.eyeArgs.irisDepthScale = RtxOptions::Eye::irisDepthScale();
     constants.eyeArgs.limbalRingScale = RtxOptions::Eye::limbalRingScale();
     constants.eyeArgs.roughness = RtxOptions::Eye::roughness();
+    constants.eyeArgs.baseReflectivity = RtxOptions::Eye::baseReflectivity();
     const auto& eyeShadingToWorld = getSceneManager().getInstanceManager().getEyeShadingToWorld();
     const auto& eyeWorldToShading = getSceneManager().getInstanceManager().getEyeWorldToShading();
 
