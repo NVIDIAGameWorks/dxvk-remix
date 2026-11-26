@@ -1315,6 +1315,10 @@ namespace dxvk {
       RTX_OPTION_ARGS("rtx.eye", float, roughness, 0.F,
                       "Perceptual roughness of the eye surface; 0 is a mirror that reflects the scene but not analytic lights.",
                       args.minValue = 0.F, args.maxValue = 1.F);
+      RTX_OPTION_ARGS("rtx.eye", float, baseReflectivity, 0.04F,
+                      "Reflectivity of the eye surface at normal incidence (F0). "
+                      "0.04 is the value of other non-metal materials; larger values make the eye's reflections brighter.",
+                      args.minValue = 0.F, args.maxValue = 1.F);
       RTX_OPTION("rtx.eye", float, irisRadius, 0.165F,
                  "Size of an iris in the iris texture. "
                  "If the iris texture is sampled outside of this radius, it's assumed that that area is a transition to the eye whites, "

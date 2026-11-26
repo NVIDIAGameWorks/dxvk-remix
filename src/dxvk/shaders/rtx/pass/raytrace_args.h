@@ -129,6 +129,9 @@ struct EyeArgs {
   float limbalRingScale;
   float roughness;
 
+  float baseReflectivity;
+  uint3 pad0;
+
   // One real viewmodel space and the single supported virtual portal space.
   EyeCorrectionArgs corrections[2];
 };
