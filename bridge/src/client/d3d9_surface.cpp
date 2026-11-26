@@ -221,7 +221,8 @@ bool Direct3DSurface9_LSS::lock(D3DLOCKED_RECT& lockedRect, const RECT* pRect, c
     m_lockInfoQueue.push({ lockedRect, rect, flags, m_bufferId, discardBufId });
   } else {
     if (!m_shadow) {
-      m_shadow.reset(new uint8_t[surfaceSize]);
+      // The copy starts zeroed, because a caller can write part of a new level and upload all of it.
+      m_shadow.reset(new uint8_t[surfaceSize]());
       g_totalSurfaceShadow += surfaceSize;
       Logger::trace(format_string("Allocated a shadow for surface [%p] "
                                   "(size: %zd, total surface shadow size: %zd)",
