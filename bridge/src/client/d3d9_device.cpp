@@ -2524,7 +2524,13 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexDeclaration(IDirect3DVertexD
   {
     {
       BRIDGE_DEVICE_LOCKGUARD();
-      m_state.vertexDecl = MakeD3DAutoPtr(pLssVtxDecl);
+      State& state = m_stateRecording ? m_stateRecording->m_captureState : m_state;
+      state.vertexDecl = MakeD3DAutoPtr(pLssVtxDecl);
+      // A declaration replaces the FVF, so GetFVF returns 0, as in d3d9.
+      state.fvf = 0;
+      if (m_stateRecording) {
+        m_stateRecording->m_dirtyFlags.vertexDecl = true;
+      }
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexDeclaration,
                     [&](SentState& s) { return s.vertexDeclaration((uint32_t) id); })) {
         return S_OK;
@@ -2565,7 +2571,17 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetFVF(DWORD FVF) {
   {
     {
       BRIDGE_DEVICE_LOCKGUARD();
-      m_FVF = FVF;
+      // d3d9 ignores an FVF of 0, so the declaration stays.
+      // Any other FVF replaces the declaration, and GetVertexDeclaration then returns none,
+      // where d3d9 returns one made for the FVF.
+      if (FVF != 0) {
+        State& state = m_stateRecording ? m_stateRecording->m_captureState : m_state;
+        state.fvf = FVF;
+        state.vertexDecl.reset(nullptr);
+        if (m_stateRecording) {
+          m_stateRecording->m_dirtyFlags.vertexDecl = true;
+        }
+      }
       if (!mustSend(Commands::IDirect3DDevice9Ex_SetFVF, [&](SentState& s) { return s.fvf(FVF); })) {
         return S_OK;
       }
@@ -2588,7 +2604,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::GetFVF(DWORD* pFVF) {
 
   {
     BRIDGE_DEVICE_LOCKGUARD();
-    *pFVF = m_FVF;
+    *pFVF = m_state.fvf;
   }
   return S_OK;
 }
