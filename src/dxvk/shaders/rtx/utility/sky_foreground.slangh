@@ -1,0 +1,76 @@
+/*
+* Copyright (c) 2026, Kim2091
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/packing.slangh"
+
+// What the G-buffer found in front of the sky or the surface at a pixel, for the composite of clouds and haze.
+// It is stored per pixel in every mode, because sparse rendering compacts the attenuation and the geometry flags.
+struct SkyForeground
+{
+  vec3 radiance;
+  // The distance in NUMOS km of the transparent layers, which is 0 when there are none.
+  // At PSR pixels this is the negated distance of the PSR surface.
+  float depthKm;
+  // The luminance of the attenuation of the layers.
+  float attenuation;
+
+  bool hasPsrSurface()
+  {
+    return depthKm < 0.0f;
+  }
+
+  bool hasSeparateLayers()
+  {
+    return depthKm > 0.0f;
+  }
+};
+
+uvec2 skyForegroundPack(SkyForeground foreground)
+{
+  return uvec2(
+    // The RGB9E5 encoding of attenuation also holds HDR radiance.
+    packAttenuation(foreground.radiance),
+    packFloat2x16(vec2(foreground.depthKm, saturate(foreground.attenuation))));
+}
+
+SkyForeground skyForegroundUnpack(uvec2 packedForeground)
+{
+  const f16vec2 depthAttenuation = unpackFloat2x16(packedForeground.y);
+
+  SkyForeground foreground;
+  foreground.radiance = unpackAttenuation(packedForeground.x);
+  foreground.depthKm = depthAttenuation.x;
+  foreground.attenuation = depthAttenuation.y;
+
+  return foreground;
+}
+
+SkyForeground skyForegroundCreateEmpty()
+{
+  SkyForeground foreground;
+  foreground.radiance = vec3(0.0f);
+  foreground.depthKm = 0.0f;
+  foreground.attenuation = 1.0f;
+
+  return foreground;
+}

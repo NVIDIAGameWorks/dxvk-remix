@@ -75,7 +75,8 @@ struct PathState : IBasePayloadState
 #if NEE_CACHE_ENABLE || ENABLE_NRC
   float16_t solidAnglePdf; // unused (1b - sign bit)
 #endif
-  float16_t coneSpreadAngle; // unused (1b - sign bit)
+  // The sign bit records whether the ray is a diffuse gather of sky light.
+  float16_t _coneSpreadAngle;
   // NV-DXVK start: The radius sign bit records specular camera visibility eligibility.
   float16_t _coneRadius;
   // NV-DXVK end
@@ -383,6 +384,19 @@ struct PathState : IBasePayloadState
     set { _coneRadius = uint16BitsToHalf((float16BitsToUint16(_coneRadius) & 0x7fff) | (newValue ? 0x8000 : 0)); }
   }
   // NV-DXVK end
+
+  property float16_t coneSpreadAngle
+  {
+    get { return abs(_coneSpreadAngle); }
+    set { _coneSpreadAngle = uint16BitsToHalf((float16BitsToUint16(newValue) & 0x7fff) | (float16BitsToUint16(_coneSpreadAngle) & 0x8000)); }
+  }
+
+  // The sky provider's indirect scale applies only to diffuse gathers.
+  property bool isSkyGatherPath
+  {
+    get { return (float16BitsToUint16(_coneSpreadAngle) & 0x8000) != 0; }
+    set { _coneSpreadAngle = uint16BitsToHalf((float16BitsToUint16(_coneSpreadAngle) & 0x7fff) | (newValue ? 0x8000 : 0)); }
+  }
 
   property float segmentHitDistance 
   {

@@ -56,6 +56,9 @@ namespace dxvk {
     CompositePass(dxvk::DxvkDevice* device);
     ~CompositePass();
 
+    // The sky provider variant is not prewarmed with the rest, because the sky is off by default.
+    static void prewarmSkyProviderShader();
+
     void dispatch(
       Rc<RtxContext> ctx,
       SceneManager& sceneManager,

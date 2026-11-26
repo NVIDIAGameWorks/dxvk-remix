@@ -545,6 +545,10 @@ namespace dxvk {
     m_imgui(device),
     m_dummyResources(device),
     m_globalVolumetrics(device),
+    // NV-DXVK start: NUMOS sky
+    m_numos(device),
+    m_numosWeather(device),
+    // NV-DXVK end
     m_sparseRendering(device),
     m_pathtracerGbuffer(device),
     m_rtxdiRayQuery(device),

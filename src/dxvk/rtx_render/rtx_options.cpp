@@ -42,6 +42,7 @@
 
 #include "dxvk_device.h"
 #include "rtx_global_volumetrics.h"
+#include "rtx_numos_settings.h"
 #include "rtx_scene_manager.h"
 
 namespace dxvk {
@@ -527,6 +528,14 @@ namespace dxvk {
 
     RtxGlobalVolumetrics& volumetrics = device->getCommon()->metaGlobalVolumetrics();
 
+    // Level 0 of the sky is High, 1 is Medium and 2 is Low.
+    auto applySkyQualityPreset = [](const int32_t level) {
+      const NumosSettings::Entry* pEntry = NumosSettings::find("rtx.atmosphere.qualityLevel");
+      if (pEntry != nullptr && pEntry->pIntOption != nullptr) {
+        pEntry->pIntOption->setDeferred(level);
+      }
+    };
+
     // Clear the previous graphics preset's FG override before applying opt-in defaults.
     {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
@@ -552,6 +561,7 @@ namespace dxvk {
       postFx.enable.setDeferred(true);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Ultra);
+      applySkyQualityPreset(0);
       applyIndirectPreset(NeuralRadianceCache::QualityPreset::Ultra, SpatiallyHashedRadianceCache::QualityPreset::Ultra);
       applySparseRenderingPreset(0.357f, 0.69f, true);
 
@@ -574,6 +584,7 @@ namespace dxvk {
       russianRoulette1stBounceMinContinueProbability.setDeferred(0.6f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::High);
+      applySkyQualityPreset(1);
       applyIndirectPreset(NeuralRadianceCache::QualityPreset::High, SpatiallyHashedRadianceCache::QualityPreset::High);
       applySparseRenderingPreset(0.228f, 0.83f, true);
 
@@ -586,6 +597,7 @@ namespace dxvk {
       russianRoulette1stBounceMinContinueProbability.setDeferred(0.4f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Medium);
+      applySkyQualityPreset(2);
       applyIndirectPreset(NeuralRadianceCache::QualityPreset::Medium, SpatiallyHashedRadianceCache::QualityPreset::Medium);
       applySparseRenderingPreset(0.125f, 0.83f, false);
     } else if (graphicsPreset() == GraphicsPreset::Low) {
@@ -597,6 +609,7 @@ namespace dxvk {
       russianRoulette1stBounceMinContinueProbability.setDeferred(0.4f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Low);
+      applySkyQualityPreset(2);
       applyIndirectPreset(NeuralRadianceCache::QualityPreset::Medium, SpatiallyHashedRadianceCache::QualityPreset::Medium);
       applySparseRenderingPreset(0.1f, 0.91f, false);
 

@@ -412,7 +412,7 @@ struct RtDistantLight {
 
   void applyTransform(const Matrix4& lightToWorld);
 
-  void writeGPUData(unsigned char* data, std::size_t& offset) const;
+  void writeGPUData(unsigned char* data, std::size_t& offset, bool isCloudShadowed) const;
 
   bool operator==(const RtDistantLight& rhs) const = delete;
 
@@ -653,6 +653,8 @@ struct RtLight {
 
   uint32_t isStaticCount = 0;
   bool isDynamic = false;
+  // The sky provider's clouds shadow this light.
+  bool isCloudShadowed = false;
 
 private:
   // Type-specific Light Information

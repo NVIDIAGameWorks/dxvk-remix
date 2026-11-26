@@ -86,6 +86,10 @@ RWTexture2D<float2> SharedRadianceRG;
 layout(r16f, binding = GBUFFER_BINDING_SHARED_RADIANCE_B_OUTPUT)
 RWTexture2D<float> SharedRadianceB;
 
+// Holds a packed SkyForeground for every pixel, and exists only while the sky provider is selected.
+layout(rg32ui, binding = GBUFFER_BINDING_SKY_FOREGROUND_OUTPUT)
+RWTexture2D<uint2> SkyForegroundOutput;
+
 layout(r16f, binding = GBUFFER_BINDING_SHARED_INTEGRATION_SURFACE_PDF_OUTPUT)
 RWTexture2D<float> SharedIntegrationSurfacePdf;
 

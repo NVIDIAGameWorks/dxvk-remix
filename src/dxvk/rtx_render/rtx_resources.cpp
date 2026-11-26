@@ -42,6 +42,7 @@
 #include "rtx_restir_gi_rayquery.h"
 #include "rtx_ray_reconstruction.h"
 #include "rtx_rtxdi_rayquery.h"
+#include "rtx_numos.h"
 #include "../util/util_global_time.h"
 
 namespace dxvk {
@@ -729,6 +730,15 @@ namespace dxvk {
         m_raytracingOutput.m_sharedSubsurfaceData.reset();
         m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.reset();
       }
+    }
+
+    if (RtxNumos::enabled()) {
+      Resource& skyForeground = m_raytracingOutput.m_skyForeground;
+      if (!skyForeground.isValid() || skyForeground.image->info().extent != m_downscaledExtent) {
+        skyForeground = createImageResource(ctx, "sky foreground", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
+      }
+    } else {
+      m_raytracingOutput.m_skyForeground.reset();
     }
 
     // Alloc / free images based on RtxOption

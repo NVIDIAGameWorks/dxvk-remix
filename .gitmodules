@@ -52,3 +52,7 @@
 [submodule "submodules/sharc"]
 	path = submodules/sharc
 	url = https://github.com/NVIDIAGameWorks/Spatial-Hash-Radiance-Cache.git
+[submodule "submodules/numos"]
+	path = submodules/numos
+	url = https://github.com/Kim2091/numos-sky.git
+	branch = main

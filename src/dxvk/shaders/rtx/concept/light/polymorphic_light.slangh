@@ -43,6 +43,11 @@
 
 // Memory Polymorphic Light Functions
 
+bool memoryPolymorphicLightIsCloudShadowed(MemoryPolymorphicLight memoryPolymorphicLight)
+{
+  return (memoryPolymorphicLight.data3.w & lightFlagCloudShadowed) != 0u;
+}
+
 DecodedPolymorphicLight decodePolymorphicLight(MemoryPolymorphicLight memoryPolymorphicLight)
 {
   const uint32_t data10 = memoryPolymorphicLight.data1.x;

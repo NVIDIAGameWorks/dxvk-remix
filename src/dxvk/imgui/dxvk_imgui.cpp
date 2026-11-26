@@ -65,6 +65,7 @@
 #include "dxvk_imgui_splash.h"
 #include "dxvk_imgui_capture.h"
 #include "rtx_render/rtx_option_layer_gui.h"
+#include "rtx_render/rtx_numos_ui.h"
 #include "rtx_render/rtx_mod_usd.h"
 #include "dxvk_scoped_annotation.h"
 #include "../../d3d9/d3d9_rtx.h"
@@ -259,6 +260,13 @@ namespace dxvk {
       {FusedWorldViewMode::None, "None"},
       {FusedWorldViewMode::View, "In View Transform"},
       {FusedWorldViewMode::World, "In World Transform"},
+  } });
+
+  static auto skyModeCombo = RemixGui::ComboWithKey<SkyMode>(
+    "Sky Mode",
+    RemixGui::ComboWithKey<SkyMode>::ComboEntries{ {
+      {SkyMode::SkyboxRasterization, "Original Game Sky"},
+      {SkyMode::Numos, "NUMOS Atmosphere"}
   } });
 
   static auto skyAutoDetectCombo = RemixGui::ComboWithKey<SkyAutoDetectMode>(
@@ -854,6 +862,11 @@ namespace dxvk {
     // windows from being interacted with.
     if (showUI == UIType::Advanced && m_reflexLatencyStatsOpen) {
       showReflexLatencyStats();
+    }
+
+    // The window stays open while the user moves around the developer menu.
+    if (showUI == UIType::Advanced) {
+      showWeatherPresetWindow(ctx.ptr());
     }
 
     if (showUI == UIType::None) {
@@ -2288,6 +2301,15 @@ namespace dxvk {
 
       if (RemixGui::CollapsingHeader("Sky Tuning", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
+        skyModeCombo.getKey(&RtxNumos::skyModeObject());
+        if (RtxNumos::enabled()) {
+          showNumosNotes(ctx.ptr());
+          if (ImGui::BeginTabBar("NumosPages", ImGuiTabBarFlags_FittingPolicyScroll)) {
+            showNumosTabs(ctx.ptr());
+            ImGui::EndTabBar();
+          }
+          RemixGui::Separator();
+        }
         RemixGui::DragFloat("Sky Brightness", &RtxOptions::skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
         RemixGui::InputInt("First N Untextured Draw Calls", &RtxOptions::skyDrawcallIdThresholdObject(), 1, 1, 0);
         RemixGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::skyMinZThresholdObject(), 0.0f, 1.0f);

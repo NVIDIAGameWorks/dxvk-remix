@@ -114,4 +114,19 @@ struct CompositeArgs {
 
   uint isZUp;
   uint enableCoverageAov;
+
+  uint skyProviderActive;
+  // The sky provider's pre-exposure, in which its composite works.
+  float skyRadianceScale;
+  // A dome light replaces the sky, which also rules out the haze.
+  uint skyHostOverride;
+  // The haze replaces the depth based fog while this is set.
+  uint skyHazeActive;
+  uint skyCloudsValid;
+  uint skyWriteBiasMask;
+  uint skyBiasMaskKeepUnorderedEmissive;
+  uint cloudMotionVectors;
+  float cloudMotionVectorCoverage;
+  // The depth that a primary miss writes, which the depth of clouds never passes.
+  float skyMissDepth;
 };

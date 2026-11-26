@@ -25,6 +25,16 @@
 
 #include "rtx/utility/shader_types.h"
 
+// Shaders without a sky provider variant leave this undefined.
+#ifndef COMPOSITE_SKY_PROVIDER
+#define COMPOSITE_SKY_PROVIDER 0
+#endif
+
+#if COMPOSITE_SKY_PROVIDER
+#include "numos/lib/atmosphere_args.h"
+#include "numos/lib/aerial_perspective_light.h"
+#endif
+
 // Constants
 
 layout(binding = COMPOSITE_CONSTANTS_INPUT)
@@ -112,6 +122,102 @@ Texture2D<uint> PrimarySurfaceFlags;
 
 layout(binding = COMPOSITE_SKY_PROBE_TEXTURE)
 SamplerCube<float3> SkyProbe;
+
+#if COMPOSITE_SKY_PROVIDER
+layout(binding = COMPOSITE_SKY_FOREGROUND_INPUT)
+Texture2D<uint2> SkyForegroundInput;
+
+layout(binding = COMPOSITE_SKY_SECONDARY_HIT_DISTANCE_INPUT)
+Texture2D<float> SecondaryHitDistance;
+
+layout(binding = COMPOSITE_SKY_ARGS_INPUT)
+ConstantBuffer<AtmosphereArgs> skyArgs;
+
+layout(binding = COMPOSITE_SKY_CLOUD_RENDER_INPUT)
+Texture2D<float4> SkyCloudRender;
+
+layout(binding = COMPOSITE_SKY_CLOUD_DEPTH_INPUT)
+Texture2D<float4> SkyCloudDepth;
+
+layout(binding = COMPOSITE_SKY_HAZE_NEAR_SCATTER_INPUT)
+Texture3D<float4> SkyHazeNearScatter;
+
+layout(binding = COMPOSITE_SKY_HAZE_FAR_SCATTER_INPUT)
+Texture3D<float4> SkyHazeFarScatter;
+
+layout(binding = COMPOSITE_SKY_HAZE_FAR_TRANSMITTANCE_INPUT)
+Texture3D<float4> SkyHazeFarTransmittance;
+
+layout(binding = COMPOSITE_SKY_HAZE_FROXEL_AUX_INPUT)
+Texture3D<float4> SkyHazeFroxelAux;
+
+layout(binding = COMPOSITE_SKY_HAZE_LIGHTS_INPUT)
+StructuredBuffer<AerialPerspectiveLight> SkyHazeLights;
+
+layout(binding = COMPOSITE_SKY_HAZE_LIGHT_CLUSTERS_INPUT)
+StructuredBuffer<uint> SkyHazeLightClusters;
+
+layout(binding = COMPOSITE_SKY_HAZE_SAMPLER_INPUT)
+SamplerState SkyHazeSampler;
+
+// The remaining sky resources keep the names that numos/host/numos_host.slangh expects.
+layout(binding = COMPOSITE_SKY_TRANSMITTANCE_LUT_INPUT)
+Texture2D AtmosphereTransmittanceLut;
+
+layout(binding = COMPOSITE_SKY_MULTISCATTERING_LUT_INPUT)
+Texture2D AtmosphereMultiscatteringLut;
+
+layout(binding = COMPOSITE_SKY_VIEW_LUT_INPUT)
+Texture2D AtmosphereSkyViewLut;
+
+layout(binding = COMPOSITE_SKY_VIEW_SAMPLER_INPUT)
+SamplerState AtmosphereSkyViewSampler;
+
+layout(binding = COMPOSITE_SKY_CLOUD_TRANSMITTANCE_LUT_INPUT)
+Texture2D<float4> AtmosphereCloudSkyTransmittanceLut;
+
+layout(binding = COMPOSITE_SKY_CLOUD_SHADOW_MAP_INPUT)
+Texture3D<float2> AtmosphereCloudShadowMap;
+
+layout(binding = COMPOSITE_SKY_CLOUD_NOISE_SAMPLER_INPUT)
+SamplerState AtmosphereCloudNoise3DSampler;
+
+layout(binding = COMPOSITE_SKY_CLOUD_SECONDARY_LUT_INPUT)
+Texture2D<float4> AtmosphereCloudSecondaryLut;
+
+layout(binding = COMPOSITE_SKY_STAR_CELLS_INPUT)
+StructuredBuffer<uint> NightSkyStarCells;
+
+layout(binding = COMPOSITE_SKY_STARS_INPUT)
+StructuredBuffer<float4> NightSkyStars;
+
+layout(binding = COMPOSITE_SKY_MILKY_WAY_INPUT)
+StructuredBuffer<uint> NightSkyMilkyWay;
+
+layout(binding = COMPOSITE_SKY_STARLIGHT_LOW_INPUT)
+Texture2D<float4> NightSkyStarlightLow;
+
+layout(binding = COMPOSITE_SKY_MOON_INPUT)
+Texture2D<float4> NightSkyMoon;
+
+#define ATMOSPHERE_AVAILABLE
+#define NIGHT_SKY_AVAILABLE
+
+layout(r8, binding = COMPOSITE_SKY_BIAS_MASK_INPUT_OUTPUT)
+RWTexture2D<float> BiasCurrentColorMask;
+
+layout(r32f, binding = COMPOSITE_SKY_DEPTH_INPUT_OUTPUT)
+RWTexture2D<float> PrimaryDepth;
+
+layout(rg16f, binding = COMPOSITE_SKY_MOTION_VECTOR_INPUT_OUTPUT)
+RWTexture2D<float2> PrimaryScreenSpaceMotionVector;
+
+layout(r32f, binding = COMPOSITE_SKY_DEPTH_DLSSRR_INPUT_OUTPUT)
+RWTexture2D<float> PrimaryDepthDLSSRR;
+
+layout(rg16f, binding = COMPOSITE_SKY_MOTION_VECTOR_DLSSRR_INPUT_OUTPUT)
+RWTexture2D<float2> PrimaryScreenSpaceMotionVectorDLSSRR;
+#endif
 
 // Inputs/Outputs
 layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)

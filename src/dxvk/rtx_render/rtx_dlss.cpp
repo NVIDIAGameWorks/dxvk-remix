@@ -29,6 +29,7 @@
 #include "rtx/pass/tonemap/tonemapping.h"
 #include "dxvk_device.h"
 #include "rtx_dlss.h"
+#include "rtx_numos.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_ngx_wrapper.h"
 #include "rtx_render/rtx_shader_manager.h"
@@ -317,7 +318,8 @@ namespace dxvk {
 
       NGXDLSSContext::NGXSettings settings;
       settings.resetAccumulation = resetHistory;
-      settings.antiGhost = mBiasCurrentColorEnabled;
+      // The sky's clouds and haze move with the wind rather than with the motion vectors, so they need the mask too.
+      settings.antiGhost = mBiasCurrentColorEnabled || device()->getCommon()->metaNumos().writesUpscalerBiasMask();
       settings.preExposure = mPreExposure;
       settings.jitterOffset[0] = jitterOffset[0];
       settings.jitterOffset[1] = jitterOffset[1];

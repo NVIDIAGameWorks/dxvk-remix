@@ -23,6 +23,7 @@
 #include "rtx_context.h"
 
 #include "dxvk_device.h"
+#include "rtx_numos.h"
 #include "rtx_resources.h"
 #include "rtx_scene_manager.h"
 #include "rtx_sky_utils.h"
@@ -119,7 +120,10 @@ dxvk::RtxContext::TryHandleSkyResult dxvk::RtxContext::tryHandleSky(const DrawPa
     };
 
     if (l_forceRaster()) {
-      rasterizeSky(*originalParams, *originalDrawCallState);
+      // The game's rasterized sky gives way to the sky provider.
+      if (!getCommonObjects()->metaNumos().replacesGameSky()) {
+        rasterizeSky(*originalParams, *originalDrawCallState);
+      }
       return TryHandleSkyResult::Default;
     }
 

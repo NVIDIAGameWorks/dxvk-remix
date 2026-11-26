@@ -305,6 +305,16 @@ dxvk_src = files([
   'rtx_render/rtx_nrd_settings.h',
   'rtx_render/rtx_nsight_capture.cpp',
   'rtx_render/rtx_nsight_capture.h',
+  'rtx_render/rtx_numos.cpp',
+  'rtx_render/rtx_numos.h',
+  'rtx_render/rtx_numos_gpu.cpp',
+  'rtx_render/rtx_numos_gpu.h',
+  'rtx_render/rtx_numos_settings.cpp',
+  'rtx_render/rtx_numos_settings.h',
+  'rtx_render/rtx_numos_ui.cpp',
+  'rtx_render/rtx_numos_ui.h',
+  'rtx_render/rtx_numos_weather.cpp',
+  'rtx_render/rtx_numos_weather.h',
   'rtx_render/rtx_objectpicking.h',
   'rtx_render/rtx_objectpicking.cpp',
   'rtx_render/rtx_opacity_micromap_manager.cpp',
@@ -520,6 +530,39 @@ rtx_shaders = custom_target(
   command: [ python_interpreter ] + rtx_shaders_command_arguments
 )
 
+# NV-DXVK start: NUMOS sky
+# The pass table of the library changes whenever a shader of NUMOS does, so it stands in for the shader sources.
+numos_shaders = custom_target(
+  'numos_shaders',
+  build_by_default: true,
+  output: ['_numos_shaders.txt'],
+  depend_files: files('../../submodules/numos/src/generated/passes.inc'),
+  command: [ python_interpreter, numos_shader_script, 'build', numos_root, slang_compiler.full_path(), numos_spirv_dir, '@OUTPUT@' ]
+)
+
+numos_lib = static_library('numos', files([
+    '../../submodules/numos/src/celestial.cpp',
+    '../../submodules/numos/src/ground_field.cpp',
+    '../../submodules/numos/src/layout.cpp',
+    '../../submodules/numos/src/log.cpp',
+    '../../submodules/numos/src/renderer.cpp',
+    '../../submodules/numos/src/renderer_api.cpp',
+    '../../submodules/numos/src/seed.cpp',
+    '../../submodules/numos/src/settings.cpp',
+    '../../submodules/numos/src/shaders.cpp',
+    '../../submodules/numos/src/weather.cpp',
+  ]),
+  include_directories : include_directories('../../submodules/numos/include', '../../submodules/numos/shaders', '../../submodules/numos/src'),
+  override_options    : ['cpp_std='+dxvk_cpp_std],
+  cpp_args            : dxvk_is_msvc ? ['/D_CRT_SECURE_NO_WARNINGS'] : []
+)
+
+numos_dep = declare_dependency(
+  link_with           : [ numos_lib ],
+  include_directories : include_directories('../../submodules/numos/include', '../../submodules/numos/shaders')
+)
+# NV-DXVK end
+
 dxvk_embedded_data_files = files([
   '../../external/fonts/NVIDIASans/NVIDIASansMd.ttf',
   '../../external/fonts/NVIDIASans/NVIDIASansBd.ttf',
@@ -529,6 +572,10 @@ dxvk_embedded_data_files = files([
 dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
 
 dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, submodules_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
+
+# NV-DXVK start: NUMOS sky
+dxvk_deps += numos_dep
+# NV-DXVK end
 
 if not dxvk_is_woa
   dxvk_deps += xess_dep
@@ -548,7 +595,7 @@ delayimp_dep = declare_dependency(
 	dependencies : [ lib_delayimp])
 dxvk_deps += delayimp_dep
 
-dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, dxvk_generated_embedded_files],
+dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, numos_shaders, dxvk_generated_embedded_files],
   link_with           : [ util_lib, spirv_lib, usd_plugins ], 
   dependencies        : [ dxvk_deps ],
   include_directories : [ dxvk_include_path, dxvk_shader_include_path, remix_api_include_path, rtxcr_include_path, submodules_include_path ],

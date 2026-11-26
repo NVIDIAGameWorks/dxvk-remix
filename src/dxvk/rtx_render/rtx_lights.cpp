@@ -847,7 +847,7 @@ void RtDistantLight::applyTransform(const Matrix4& lightToWorld) {
   updateCachedHash();
 }
 
-void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
+void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset, bool isCloudShadowed) const {
   [[maybe_unused]] const std::size_t oldOffset = offset;
 
   // Direction and orientation are stored as full float32 (not float16): float16's coarse angular
@@ -877,7 +877,11 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
 
   // Note: Distant light type (4)
   // Todo: Ideally match this with GPU light type constants
-  writeGPUHelper(data, offset, static_cast<uint32_t>(lightTypeDistant << 29));
+  uint32_t flags = static_cast<uint32_t>(lightTypeDistant << 29);
+  if (isCloudShadowed) {
+    flags |= lightFlagCloudShadowed;
+  }
+  writeGPUHelper(data, offset, flags);
 
   assert(offset - oldOffset == kLightGPUSize);
 }
@@ -974,6 +978,7 @@ RtLight::RtLight(const RtLight& light) {
 void RtLight::copyFrom(const RtLight& light) {
   isStaticCount = light.isStaticCount;
   isDynamic = light.isDynamic;
+  isCloudShadowed = light.isCloudShadowed;
   m_type = light.m_type;
   
   // Copy only the active union member based on the light type
@@ -1113,7 +1118,7 @@ void RtLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
     m_cylinderLight.writeGPUData(data, offset);
     break;
   case RtLightType::Distant:
-    m_distantLight.writeGPUData(data, offset);
+    m_distantLight.writeGPUData(data, offset, isCloudShadowed);
     break;
   }
 }

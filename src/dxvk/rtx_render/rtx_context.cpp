@@ -43,6 +43,7 @@
 #include "rtx_restir_gi_rayquery.h"
 #include "rtx_composite.h"
 #include "rtx_debug_view.h"
+#include "rtx_numos.h"
 
 #include "rtx/pass/sparse_rendering/sparse_rendering.h"
 
@@ -534,6 +535,8 @@ namespace dxvk {
 
     auto common = getCommonObjects();
     const auto isRaytracingEnabled = RtxOptions::enableRaytracing();
+    // The sky registers its shaders first, so that ray tracing waits for them like for every other shader.
+    common->metaNumos().prewarmShaders();
     const auto asyncShaderCompilationActive = RtxOptions::Shader::enableAsyncCompilation() && common->pipelineManager().remixShaderCompilationCount() > 0;
 
     // Whether a ray-traced scene is actually being rendered this frame.
@@ -685,6 +688,8 @@ namespace dxvk {
       m_submitContainsInjectRtx = true;
       m_cachedReflexFrameId = cachedReflexFrameId;
 
+      m_common->metaNumos().updateLights(*this);
+
       // Update all the GPU buffers needed to describe the scene
       getSceneManager().prepareSceneData(this, m_execBarriers);
       
@@ -714,6 +719,9 @@ namespace dxvk {
         
         // Path Tracing
         dispatchPathTracing(rtOutput);
+
+        // The screen space clouds read this frame's linear view Z, which the G-buffer pass writes.
+        m_common->metaNumos().dispatchPostDepth(*this, rtOutput);
 
         // Neural Radiance Cache
         m_common->metaNeuralRadianceCache().dispatchTrainingAndResolve(*this, rtOutput);
@@ -1519,6 +1527,9 @@ namespace dxvk {
 
     constants.domeLightArgs = getSceneManager().getLightManager().getDomeLightArgs();
 
+    // This records the sky's work that comes before path tracing, and fills the sky fields of the constants.
+    getCommonObjects()->metaNumos().beginFrame(*this, constants);
+
     // Ray miss value handling
     constants.clearColorDepth = getSceneManager().getGlobals().clearColorDepth;
     constants.clearColorPicking = getSceneManager().getGlobals().clearColorPicking;
@@ -1638,6 +1649,8 @@ namespace dxvk {
     bindResourceView(BINDING_VALUE_NOISE_SAMPLER, valueNoiseLut, nullptr);
     bindResourceSampler(BINDING_VALUE_NOISE_SAMPLER, linearSampler);
     bindResourceBuffer(BINDING_SAMPLER_READBACK_BUFFER, DxvkBufferSlice(samplerFeedbackBuffer, 0, samplerFeedbackBuffer.ptr() ? samplerFeedbackBuffer->info().size : 0));
+
+    getCommonObjects()->metaNumos().bindCommonResources(*this);
   }
 
   void RtxContext::bindResourceView(const uint32_t slot, const Rc<DxvkImageView>& imageView, const Rc<DxvkBufferView>& bufferView)

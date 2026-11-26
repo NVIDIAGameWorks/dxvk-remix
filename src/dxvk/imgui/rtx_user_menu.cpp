@@ -38,6 +38,8 @@
 #include "rtx_render/rtx_neural_radiance_cache.h"
 #include "rtx_render/rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_render/rtx_global_volumetrics.h"
+#include "rtx_render/rtx_numos.h"
+#include "rtx_render/rtx_numos_ui.h"
 #include "rtx_render/rtx_option_layer_gui.h"
 #include "rtx_render/rtx_scene_manager.h"
 #include "../util/util_string.h"
@@ -592,6 +594,21 @@ namespace dxvk {
       common->metaGlobalVolumetrics().showImguiUserSettings();
       ImGui::EndDisabled();
       ImGui::Unindent(static_cast<float>(subItemIndent));
+    }
+
+    // The graphics presets do not set these, and they apply only while NUMOS draws the sky.
+    if (RtxNumos::enabled()) {
+      ImGui::Dummy(ImVec2(0.0f, 3.0f));
+      ImGui::TextSeparator("Night Settings");
+      showNumosUserNight(ctx.ptr());
+
+      ImGui::Dummy(ImVec2(0.0f, 3.0f));
+      ImGui::TextSeparator("Haze Settings");
+      showNumosUserHaze(ctx.ptr());
+
+      ImGui::Dummy(ImVec2(0.0f, 3.0f));
+      ImGui::TextSeparator("Cloud Settings");
+      showNumosUserClouds(ctx.ptr());
     }
 
     // Post Effect Settings

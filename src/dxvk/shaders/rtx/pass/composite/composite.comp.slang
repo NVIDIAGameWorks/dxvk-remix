@@ -19,6 +19,17 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+// The sky provider variant composites the sky, clouds and haze of NUMOS.
+// The base variant leaves that code out, because it raises the register count of the whole pass.
+
+//!variant composite.comp
+//!>       COMPOSITE_SKY_PROVIDER=0
+
+//!variant composite_sky_provider.comp
+//!>       COMPOSITE_SKY_PROVIDER=1
+
+//!end-variants
+
 #include "rtx/pass/composite/composite_bindings.slangh"
 
 #include "rtx/pass/composite/composite_args.h"
@@ -42,6 +53,9 @@
 #include "rtx/algorithm/view_distance.slangh"
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
+#if COMPOSITE_SKY_PROVIDER
+#include "rtx/pass/composite/composite_sky.slangh"
+#endif
 
 float3 sampleDomeLightTexture(Sampler2D<float3> DomeLight, float3 worldDirection, float4x4 worldToDomeLightTransform)
 {
@@ -441,8 +455,19 @@ void applyVolumetricLighting(
   out vec3 controlMaskVolumeAttenuation,
   out vec3 alphaBlendOutput,
   out float backgroundAlpha,
+#if COMPOSITE_SKY_PROVIDER
+  out bool hasAlphaBlendSurface,
+  out float alphaBlendDistance,
+  out vec3 alphaBlendEmission,
+#endif
   out vec3 radianceOutput)
 {
+#if COMPOSITE_SKY_PROVIDER
+  hasAlphaBlendSurface = false;
+  alphaBlendDistance = 0.0f;
+  alphaBlendEmission = vec3(0.0f);
+#endif
+
   // Override the default volume sampling RNG seed offset
   setVolumeSamplingRngSeed(1);
 
@@ -583,10 +608,22 @@ void applyVolumetricLighting(
       }
       else
       {
+#if COMPOSITE_SKY_PROVIDER
+        // The haze replaces the fog.
+        const vec4 fogColor = cb.skyHazeActive
+          ? vec4(0.0f)
+          : calculateFog(surface.hitT);
+#else
         const vec4 fogColor = calculateFog(surface.hitT);
+#endif
         alphaBlendOutput = alphaBlendOutput * (1.0f - fogColor.a) + fogColor.rgb * fogColor.a;
         alphaBlendOutput *= (1 - backgroundAlpha);
       }
+
+#if COMPOSITE_SKY_PROVIDER
+      hasAlphaBlendSurface = true;
+      alphaBlendDistance = surface.hitT;
+#endif
 
       // No sparse compensation scaling: alphaBlendOutput is already a dense per-pixel signal.
       // composite_alpha_blend writes AlphaBlendRadiance at every valid surface,
@@ -596,7 +633,12 @@ void applyVolumetricLighting(
 
       if (surface.hasEmissive)
       {
+#if COMPOSITE_SKY_PROVIDER
+        // Shared emission joins after the haze, which fogs the surface alone as calculateFog does.
+        alphaBlendEmission = sharedRadiance;
+#else
         alphaBlendOutput += sharedRadiance;
+#endif
       }
     }
 
@@ -613,6 +655,11 @@ void applySkyContribution(
   bool primaryMiss,
   float radianceScale,
   vec3 volumeAttenuation,
+#if COMPOSITE_SKY_PROVIDER
+  vec3 skyThroughput,
+  inout float cloudCoverage,
+  inout vec3 skyLayer,
+#endif
   inout vec3 radianceOutput)
 {
   // A zero scale marks an inactive sparse miss, whose sky comes from ray reconstruction.
@@ -622,6 +669,20 @@ void applySkyContribution(
   }
 
   vec3 skyContribution;
+#if COMPOSITE_SKY_PROVIDER
+  vec3 domeLightRadiance = vec3(0.0f);
+  if (cb.domeLightArgs.active)
+  {
+    domeLightRadiance = cb.domeLightArgs.radiance * sampleDomeLightTexture(SkyLight, primaryRayDirections.worldDirection, cb.domeLightArgs.worldToLightTransform);
+  }
+  const vec3 skyWeight = volumeAttenuation * skyThroughput;
+  skyContribution = skyWeight * compositePrimarySky(
+    pixelCoordinate, primaryRayDirections.worldDirection, domeLightRadiance, cloudCoverage);
+  if (cb.skyWriteBiasMask)
+  {
+    skyLayer += skyWeight * compositeSkyLayerOverSky(pixelCoordinate) * radianceScale;
+  }
+#else
   if (cb.domeLightArgs.active)
   {
     skyContribution = cb.domeLightArgs.radiance * sampleDomeLightTexture(SkyLight, primaryRayDirections.worldDirection, cb.domeLightArgs.worldToLightTransform) * volumeAttenuation;
@@ -635,6 +696,7 @@ void applySkyContribution(
     vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, pixelCoordinate);
     skyContribution = cb.skyBrightness * SkyLight.SampleLevel(screenUV, 0) * volumeAttenuation;
   }
+#endif
 
   if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off &&
       cb.sparseRenderingArgs.enableSparsePrimaryRayMissComposition)
@@ -648,12 +710,23 @@ void applySkyContribution(
 float applyFog(
   float viewDistance,
   float radianceScale,
+#if COMPOSITE_SKY_PROVIDER
+  bool primaryMiss,
+#endif
   inout vec3 radianceOutput)
 {
   if (cb.volumeArgs.enable)
   {
     return 1.0f; // Volumetric fog is applied in volume integration
   }
+
+#if COMPOSITE_SKY_PROVIDER
+  // The haze replaces the fog, and the sky of NUMOS already carries its air.
+  if (cb.skyHazeActive || primaryMiss)
+  {
+    return 1.0f;
+  }
+#endif
 
   // Todo: Using view distance is a bit of a hack here, the primary emissive contribution will not be fully weighted correctly
   // as emissive hits will be over-attenuated.
@@ -711,6 +784,10 @@ vec4 compositeResult(
   GeometryFlags geometryFlags,
   float primaryLinearViewZ,
   bool primaryMiss,
+#if COMPOSITE_SKY_PROVIDER
+  out float cloudCoverage,
+  out vec3 skyLayer,
+#endif
   out float controlMaskTransmittance)
 {
   RNG randomState = createRNG(pixelCoordinate, cb.frameIdx, 0);
@@ -762,6 +839,13 @@ vec4 compositeResult(
   float backgroundAlpha;
   vec3 radianceOutput;
   vec3 sharedFinalOutput;
+#if COMPOSITE_SKY_PROVIDER
+  bool hasAlphaBlendSurface;
+  float alphaBlendDistance;
+  vec3 alphaBlendEmission;
+  cloudCoverage = 0.0f;
+  skyLayer = vec3(0.0f);
+#endif
 
   const float radianceScale = calculateRadianceScale(pixelCoordinate, pixelIsActive, primaryMiss);
   const float volumetricRadianceScale = calculateVolumetricRadianceScale(pixelCoordinate, pixelIsActive, primaryMiss);
@@ -780,7 +864,11 @@ vec4 compositeResult(
     pixelCoordinate, randomState, primaryRayDirections, pixelIsActive, primaryMiss, viewDistance,
     radianceScale, volumetricRadianceScale, remodulatedTotalSecondaryRadiance, sharedRadiance,
     volumetricPreintegratedRadiance, volumeAttenuation, controlMaskVolumeAttenuation,
-    alphaBlendOutput, backgroundAlpha, radianceOutput);
+    alphaBlendOutput, backgroundAlpha,
+#if COMPOSITE_SKY_PROVIDER
+    hasAlphaBlendSurface, alphaBlendDistance, alphaBlendEmission,
+#endif
+    radianceOutput);
 
   // Calculate final combined radiance output
   // Note: The primary hit accumulated radiance value is not affected by the throughput (rather takes attenuation into account
@@ -790,8 +878,103 @@ vec4 compositeResult(
   // Note: Shared radiance should always be pre-attenuated so no need to factor that in here - it contains multiple layers of signal so each contribution must be attenuated inline.
   radianceOutput += sharedRadiance;
 
+#if COMPOSITE_SKY_PROVIDER
+  const SkyForeground foreground = skyForegroundUnpack(SkyForegroundInput[pixelCoordinate]);
+  vec3 alphaBlendLayer = vec3(0.0f);
+
+  // Everything on a miss lies in front of the sky, so clouds and haze are composited only into the sky there.
+  if (!primaryMiss)
+  {
+    const vec3 volumetricInScatter = volumetricPreintegratedRadiance * volumetricRadianceScale;
+
+    SkyCompositeInput skyInput = {};
+    skyInput.radiance = radianceOutput - volumetricInScatter;
+    skyInput.foreground = foreground;
+    skyInput.alphaBlendRadiance = alphaBlendOutput;
+    skyInput.alphaBlendDistance = alphaBlendDistance;
+    skyInput.backgroundAlpha = backgroundAlpha;
+    skyInput.hasAlphaBlendSurface = hasAlphaBlendSurface;
+    skyInput.volumeAttenuation = volumeAttenuation;
+    skyInput.viewDistance = viewDistance;
+
+    if (foreground.hasSeparateLayers())
+    {
+      skyInput.foregroundRadiance = min(foreground.radiance, max(sharedRadiance, vec3(0.0f)));
+      skyInput.radiance -= skyInput.foregroundRadiance;
+    }
+    else if (foreground.hasPsrSurface() && pixelIsActive)
+    {
+      // The flags and attenuation of the paths are compacted, so only active pixels can separate them.
+      if (primaryLinearViewZ != cb.primaryDirectMissLinearViewZ)
+      {
+        skyInput.primaryPathRadiance = remodulatedTotalPrimaryRadiance * volumeAttenuation;
+        skyInput.primaryPathWeight = saturate(primaryAttenuation);
+      }
+      if (geometryFlags.secondarySurfaceMask)
+      {
+        skyInput.secondaryPathDistance = SecondaryHitDistance[compactedCoordinate];
+        if (skyInput.secondaryPathDistance > 0.0f)
+        {
+          skyInput.secondaryPathRadiance = remodulatedTotalSecondaryRadiance * volumeAttenuation;
+          skyInput.secondaryPathWeight = saturate(secondaryAttenuation);
+        }
+      }
+      skyInput.radiance -= skyInput.primaryPathRadiance + skyInput.secondaryPathRadiance;
+    }
+
+    const SkyCompositeResult skyResult = compositeSkyOverSurface(pixelCoordinate, skyInput);
+    radianceOutput = skyResult.radiance + volumetricInScatter;
+    alphaBlendOutput = skyResult.alphaBlendRadiance;
+    cloudCoverage = skyResult.cloudCoverage;
+
+    if (cb.skyWriteBiasMask)
+    {
+      const SkyCompositeResult layerResult = compositeSkyLayerOverSurface(pixelCoordinate, skyInput);
+      skyLayer = layerResult.radiance;
+      alphaBlendLayer = layerResult.alphaBlendRadiance;
+    }
+  }
+  else if (hasAlphaBlendSurface)
+  {
+    // An alpha blended surface in front of the sky still gets the clouds and haze up to its own distance.
+    SkyCompositeInput skyInput = {};
+    skyInput.foreground = skyForegroundCreateEmpty();
+    skyInput.alphaBlendRadiance = alphaBlendOutput;
+    skyInput.alphaBlendDistance = alphaBlendDistance;
+    skyInput.backgroundAlpha = backgroundAlpha;
+    skyInput.hasAlphaBlendSurface = true;
+    skyInput.volumeAttenuation = volumeAttenuation;
+    skyInput.viewDistance = alphaBlendDistance;
+
+    alphaBlendOutput = compositeSkyOverSurface(pixelCoordinate, skyInput).alphaBlendRadiance;
+    if (cb.skyWriteBiasMask)
+    {
+      alphaBlendLayer = compositeSkyLayerOverSurface(pixelCoordinate, skyInput).alphaBlendRadiance;
+    }
+  }
+
+  alphaBlendOutput += alphaBlendEmission;
+
+  // The attenuation in front of the sky is compacted, so inactive pixels take its dense luminance.
+  const vec3 skyThroughput = pixelIsActive
+    ? saturate(primaryAttenuation)
+    : vec3(foreground.attenuation);
+#endif
+
   // Add sky radiance
-  applySkyContribution(pixelCoordinate, primaryRayDirections, primaryMiss, radianceScale, volumeAttenuation, radianceOutput);
+  applySkyContribution(pixelCoordinate, primaryRayDirections, primaryMiss, radianceScale, volumeAttenuation,
+#if COMPOSITE_SKY_PROVIDER
+    skyThroughput, cloudCoverage, skyLayer,
+#endif
+    radianceOutput);
+
+#if COMPOSITE_SKY_PROVIDER
+  if (primaryMiss && radianceScale == 0.0f)
+  {
+    // The motion vectors are dense even where the sky is sparse.
+    cloudCoverage = getSkyCloudCoverage(pixelCoordinate);
+  }
+#endif
 
   // Blend distant primary surfaces into the sky, keeping the volumetric inscattering in front of them
   // WARN: 'rtx.sparseRendering.enableSparsePrimaryRayMissComposition' ON makes the fade end shimmer against the sky
@@ -803,12 +986,30 @@ vec4 compositeResult(
     const VolumeDefinitionCamera volumeCamera = cb.volumeArgs.cameras[froxelVolumeMain];
     const vec3 skyVolumeAttenuation = volumeAttenuation * calcVolumetricAttenuation(
       cb.volumeArgs, volumeCamera, true, 0.0f, worldToTranslatedWorld(volumeCamera, worldPosition), primaryRayDirections.worldDirection);
-    applySkyContribution(pixelCoordinate, primaryRayDirections, true, radianceScale, skyVolumeAttenuation, skyRadiance);
-    radianceOutput = lerp(radianceOutput, skyRadiance, calcViewDistanceFade(cb.viewDistanceArgs, cb.isZUp, cb.camera, worldPosition));
+#if COMPOSITE_SKY_PROVIDER
+    float fadedCloudCoverage = 0.0f;
+    vec3 fadedSkyLayer = vec3(0.0f);
+#endif
+    applySkyContribution(pixelCoordinate, primaryRayDirections, true, radianceScale, skyVolumeAttenuation,
+#if COMPOSITE_SKY_PROVIDER
+      vec3(1.0f), fadedCloudCoverage, fadedSkyLayer,
+#endif
+      skyRadiance);
+    const float skyFade = calcViewDistanceFade(cb.viewDistanceArgs, cb.isZUp, cb.camera, worldPosition);
+    radianceOutput = lerp(radianceOutput, skyRadiance, skyFade);
+#if COMPOSITE_SKY_PROVIDER
+    cloudCoverage = lerp(cloudCoverage, fadedCloudCoverage, skyFade);
+    skyLayer = lerp(skyLayer, fadedSkyLayer, skyFade);
+#endif
   }
 
   // Apply fog
+#if COMPOSITE_SKY_PROVIDER
+  const float fogTransmittance = applyFog(viewDistance, radianceScale, primaryMiss, radianceOutput);
+  skyLayer = skyLayer * fogTransmittance * backgroundAlpha + alphaBlendLayer;
+#else
   const float fogTransmittance = applyFog(viewDistance, radianceScale, radianceOutput);
+#endif
   controlMaskTransmittance = calcBt709Luminance(saturate(controlMaskVolumeAttenuation));
   controlMaskTransmittance *= fogTransmittance * backgroundAlpha;
 
@@ -862,6 +1063,13 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     primaryMiss = packedFlagGet(PrimarySurfaceFlags[pixelCoordinate], kPrimarySurfaceFlagPrimaryRayMiss);
   }
 
+#if COMPOSITE_SKY_PROVIDER
+  if (primaryMiss && !pixelIsActive && skyForegroundUnpack(SkyForegroundInput[pixelCoordinate]).hasPsrSurface())
+  {
+    primaryMiss = false;
+  }
+#endif
+
   // Written from composite (rather than the prepare RR pass) so the value is gated by sparse activity
   if (cb.writeRayReconstructionHitDistance)
   {
@@ -875,9 +1083,21 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   }
 
   float controlMaskTransmittance;
+#if COMPOSITE_SKY_PROVIDER
+  float cloudCoverage;
+  vec3 skyLayer;
+#endif
   vec4 finalOutput = compositeResult(
     pixelCoordinate, compactedCoordinate, pixelIsActive, geometryFlags, primaryLinearViewZ, primaryMiss,
+#if COMPOSITE_SKY_PROVIDER
+    cloudCoverage, skyLayer,
+#endif
     controlMaskTransmittance);
+
+#if COMPOSITE_SKY_PROVIDER
+  applyCloudMotionVectors(pixelCoordinate, cloudCoverage);
+  writeSkyBiasMask(pixelCoordinate, finalOutput.rgb, skyLayer);
+#endif
 
   if (cb.enableDlssNrVolumetricControlMask)
   {

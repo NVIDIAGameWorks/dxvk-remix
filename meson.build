@@ -324,6 +324,12 @@ spirv_val = find_program('external/spirv_tools/spirv-val')
 python_interpreter = find_program('python3', 'python')
 shader_compile_script = join_paths(global_src_root_norm, 'scripts-common/compile_shaders.py')
 
+# NV-DXVK start: NUMOS sky
+numos_root = join_paths(global_src_root_norm, 'submodules/numos')
+numos_shader_script = join_paths(global_src_root_norm, 'scripts-common/numos_shaders.py')
+numos_spirv_dir = join_paths(current_build_dir_norm, 'src/dxvk/numos_spirv')
+# NV-DXVK end
+
 # GLSL Compiler
 
 glsl_args = [ '-V', '--vn', '@BASENAME@', '@INPUT@', '-o', '@OUTPUT@', '--target-env', 'vulkan1.2', '@EXTRA_ARGS@' ]
@@ -382,6 +388,11 @@ rtx_shaders_command_arguments = [
   '-include', rtxcr_include_path_string,
   '-include', submodules_include_path_string,
   '-include', volumetrics_include_path_string,
+  # NV-DXVK start: NUMOS host shader API
+  # The shim comes first, because it maps the helpers that NUMOS copied from Remix onto Remix's own.
+  '-include', join_paths(shader_directory, 'numos_shim'),
+  '-include', join_paths(numos_root, 'shaders'),
+  # NV-DXVK end
   '-output', rtx_shader_output_directory,
   '-parallel',
 ]
@@ -803,6 +814,13 @@ if dxvk_is_ninja or dxvk_is_woa_ec
       install_data(join_paths(sentry_bin_path, 'crashpad_handler.exe'), install_dir : output_path, install_tag: target_suffix)
       install_data(join_paths(sentry_bin_path, 'crashpad_wer.dll'), install_dir : output_path, install_tag: target_suffix)
     endif
+
+    # NV-DXVK start: NUMOS shaders, night sky data, license and notices
+    meson.add_install_script(
+      python_interpreter, numos_shader_script, 'install', numos_root, numos_spirv_dir, output_path,
+      install_tag: target_suffix
+    )
+    # NV-DXVK end
 
     if src_exe != ''
       # intentionally using two install jobs here so we can have unique tags
